@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Hybrid Keyboard</string>
+    <string name="ime_service_label">Hybrid Keyboard (Samsung + Gboard)</string>
+    <string name="ime_subtype_en_us">English (US)</string>
+    <string name="ime_subtype_hi_in">Hinglish / हिंदी (India)</string>
+    <string name="hero_banner_desc">Hybrid Keyboard Studio Banner</string>
+    <string name="tab_sandbox">Live Keyboard</string>
+    <string name="tab_themes">Themes &amp; Layout</string>
+    <string name="tab_dictionary">Clipboard &amp; Words</string>
+    <string name="tab_battery">Eco &amp; Android 17</string>
+    <string name="enable_ime_button">Enable in System Settings</string>
+    <string name="switch_ime_button">Select Input Method</string>
+    <string name="mic_permission_rationale">Microphone access enables real-time voice typing and hands-free dictation.</string>
+    <string name="clear_text">Clear</string>
+    <string name="copy_text">Copy</string>
+</resources>

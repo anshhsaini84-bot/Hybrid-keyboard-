@@ -1,0 +1,6 @@
+{
+  "name": "Hybrid Keyboard",
+  "description": "Next-generation Android keyboard combining Samsung Keyboard's dedicated number row and top utility bar with Google Gboard's glide typing, smart voice microphone dictation, clipboard manager, and ultra-low battery optimization up to Android 17.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

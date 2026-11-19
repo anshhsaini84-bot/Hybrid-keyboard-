@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Deep space tech background -->
+    <path android:pathData="M0,0h320v180h-320z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="320"
+                android:endY="180"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#0A0E17" />
+                <item android:offset="0.5" android:color="#111A2E" />
+                <item android:offset="1.0" android:color="#0D1322" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Glowing soundwave rings -->
+    <path
+        android:strokeColor="#2200E5FF"
+        android:strokeWidth="2"
+        android:pathData="M160,90m-75,0a75,75 0,1 1,150 0a75,75 0,1 1,-150 0" />
+    <path
+        android:strokeColor="#443D5AFE"
+        android:strokeWidth="1.5"
+        android:pathData="M160,90m-55,0a55,55 0,1 1,110 0a55,55 0,1 1,-110 0" />
+    <!-- Isometric sleek keyboard deck -->
+    <path
+        android:fillColor="#182238"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="1.5"
+        android:pathData="M56,48h208c6.6,0 12,5.4 12,12v72c0,6.6 -5.4,12 -12,12H56c-6.6,0 -12,-5.4 -12,-12V60c0,-6.6 5.4,-12 12,-12z" />
+    <!-- Keyboard number & letter keycaps -->
+    <path
+        android:fillColor="#243252"
+        android:pathData="M66,60h16v14h-16zM86,60h16v14h-16zM106,60h16v14h-16zM126,60h16v14h-16zM178,60h16v14h-16zM198,60h16v14h-16zM218,60h16v14h-16zM238,60h16v14h-16z" />
+    <path
+        android:fillColor="#2A3A5E"
+        android:pathData="M72,80h16v14h-16zM92,80h16v14h-16zM112,80h16v14h-16zM192,80h16v14h-16zM212,80h16v14h-16zM232,80h16v14h-16z" />
+    <path
+        android:fillColor="#243252"
+        android:pathData="M66,100h22v14h-22zM92,100h16v14h-16zM112,100h16v14h-16zM192,100h16v14h-16zM212,100h16v14h-16zM232,100h22v14h-22z" />
+    <!-- Glowing Spacebar -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M104,120h112v12h-112z" />
+    <!-- Center Voice Orb -->
+    <path
+        android:fillColor="#3D5AFE"
+        android:pathData="M160,84m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M160,72c-2.8,0 -5,2.2 -5,5v8c0,2.8 2.2,5 5,5s5,-2.2 5,-5v-8c0,-2.8 -2.2,-5 -5,-5zM168,85c0,4.4 -3.6,8 -8,8s-8,-3.6 -8,-8h-2c0,5 3.7,9.1 8.5,9.9V98h3v-3.1c4.8,-0.8 8.5,-4.9 8.5,-9.9h-2z" />
+</vector>
