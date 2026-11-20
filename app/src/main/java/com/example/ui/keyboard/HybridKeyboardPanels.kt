@@ -108,12 +108,12 @@ fun KeyboardTopStrip(
             .fillMaxWidth()
             .background(theme.utilityBarColor)
     ) {
-        // Samsung + Gboard full quick utility ribbon
+        // Clean, balanced Samsung × Gboard utility bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
-                .padding(horizontal = 6.dp),
+                .height(40.dp)
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -122,7 +122,7 @@ fun KeyboardTopStrip(
                     .weight(1f)
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 UtilityIconButton(
                     icon = if (activePanel == KeyboardPanel.EMOJI) Icons.Rounded.Keyboard else Icons.Rounded.EmojiEmotions,
@@ -154,7 +154,7 @@ fun KeyboardTopStrip(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(top = 6.dp, end = 6.dp)
-                                .size(7.dp)
+                                .size(6.dp)
                                 .clip(CircleShape)
                                 .background(theme.accentColor)
                         )
@@ -228,67 +228,55 @@ fun KeyboardTopStrip(
                 }
             }
 
-            // Dedicated Soft Microphone Pill (always easy to reach)
+            // Sleek circular Soft Microphone button
             if (settings.softMicAlwaysVisible) {
                 val isListening = voiceState is VoiceDictationState.Listening ||
                     voiceState is VoiceDictationState.Partial
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = if (isListening) theme.accentColor else theme.keyColor,
+                Box(
                     modifier = Modifier
                         .padding(start = 6.dp)
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .border(
-                            width = 1.dp,
-                            color = if (isListening) theme.accentColor else theme.keyBorderColor,
-                            shape = RoundedCornerShape(18.dp)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isListening) theme.accentColor else theme.accentColor.copy(alpha = 0.14f)
                         )
                         .clickable(onClick = onMicClick)
-                        .testTag("kbd_soft_mic_button")
+                        .testTag("kbd_soft_mic_button"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isListening) Icons.Rounded.MicOff else Icons.Rounded.Mic,
-                            contentDescription = "Soft Voice Microphone",
-                            tint = if (isListening) Color.Black else theme.accentColor,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = if (isListening) "Listening" else "Mic",
-                            color = if (isListening) Color.Black else theme.keyTextColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
+                    Icon(
+                        imageVector = if (isListening) Icons.Rounded.MicOff else Icons.Rounded.Mic,
+                        contentDescription = "Soft Voice Microphone",
+                        tint = if (isListening) Color.Black else theme.accentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
 
-        // Gboard-style Prediction & Autocorrect Strip
+        // Crisp Gboard-style Prediction Strip with subtle hairline dividers
         if (activePanel == KeyboardPanel.ALPHA || showSuggestionsMode) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(34.dp)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 suggestions.take(3).forEachIndexed { index, word ->
+                    if (index > 0) {
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(16.dp)
+                                .background(theme.keyBorderColor.copy(alpha = 0.45f))
+                        )
+                    }
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (index == 0) theme.keyColor.copy(alpha = 0.85f)
-                                else Color.Transparent
-                            )
                             .clickable { onSuggestionClick(word) }
                             .testTag("kbd_suggestion_$index"),
                         contentAlignment = Alignment.Center
@@ -296,8 +284,8 @@ fun KeyboardTopStrip(
                         Text(
                             text = word,
                             color = if (index == 0) theme.accentColor else theme.keyTextColor,
-                            fontSize = 13.sp,
-                            fontWeight = if (index == 0) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 14.sp,
+                            fontWeight = if (index == 0) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

@@ -1,9 +1,9 @@
 package com.example.ui.screens
 
+import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
-import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -12,7 +12,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,32 +20,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
-import androidx.compose.material.icons.rounded.BatterySaver
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.DeleteSweep
-import androidx.compose.material.icons.rounded.Keyboard
-import androidx.compose.material.icons.rounded.Mic
-import androidx.compose.material.icons.rounded.PictureInPictureAlt
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.SwapHoriz
-import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,22 +44,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.R
 import com.example.data.ClipboardEntryEntity
-import com.example.data.KeyboardLanguage
 import com.example.data.TextEditCommand
 import com.example.engine.ClipboardSyncManager
 import com.example.engine.VoiceDictationState
@@ -87,598 +67,364 @@ fun LiveKeyboardScreen(
     uiState: HybridStudioUiState,
     viewModel: HybridViewModel,
     onRequestMicPermissionAndListen: () -> Unit,
-    onNavigateToThemes: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scrollState = rememberScrollState()
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
             viewModel.importImageToClipboard(uri) { ok ->
-                val msg = if (ok) {
-                    "Screenshot/Image saved to Hybrid Clipboard!"
-                } else {
-                    "Could not import image"
-                }
-                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    if (ok) "Saved to Clipboard" else "Could not import image",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
 
     Column(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        // Scrollable top workspace: Hero + System Activation + Interactive Text Editor
+        // Minimal, crisp header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Hybrid Keyboard",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            // Compact system IME status / setup trigger
+            val isDefault = uiState.imeStatus.isSelectedAsDefault
+            val isEnabled = uiState.imeStatus.isEnabledInSystem
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (isDefault) {
+                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)
+                } else {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                },
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable {
+                        if (!isEnabled) {
+                            context.startActivity(
+                                Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            )
+                        } else {
+                            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                            imm.showInputMethodPicker()
+                        }
+                    }
+                    .testTag(if (!isEnabled) "enable_ime_button" else "switch_ime_button")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isDefault) Icons.Rounded.CheckCircle else Icons.Rounded.SwapHoriz,
+                        contentDescription = null,
+                        tint = if (isDefault) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = when {
+                            isDefault -> "Active"
+                            isEnabled -> "Switch Keyboard"
+                            else -> "Enable Keyboard"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontSize = 12.sp,
+                        color = if (isDefault) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        // Clean, spacious live typing canvas
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 12.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .padding(16.dp)
         ) {
-            // Sleek Hero Header Card
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline,
-                        shape = RoundedCornerShape(20.dp)
-                    )
+            // Subtle toolbar inside the typing canvas
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
+                Text(
+                    text = "Try typing here",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("sandbox_add_screenshot_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.AddPhotoAlternate,
+                            contentDescription = "Add screenshot to clipboard",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            viewModel.saveSandboxToClipboard()
+                            Toast.makeText(context, "Copied to Clipboard", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("sandbox_copy_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.ContentCopy,
+                            contentDescription = "Copy text",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { viewModel.clearSandbox() },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("sandbox_clear_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = "Clear text",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
+            }
+
+            // Pasted Screenshot/Image Preview if attached
+            val attached = uiState.attachedSandboxImage
+            if (attached != null && attached.imagePath != null) {
+                val bmp = remember(attached.imagePath) {
+                    ClipboardSyncManager.loadThumbnail(attached.imagePath, 220)
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(126.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.img_hero_hybrid_banner),
-                        contentDescription = stringResource(id = R.string.hero_banner_desc),
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                    if (bmp != null) {
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = attached.content,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                    }
+                    Text(
+                        text = attached.content,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
                     )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(
-                                        Color(0xE6090D16),
-                                        Color(0x99090D16),
-                                        Color(0x33090D16)
-                                    )
-                                )
-                            )
-                    )
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.SpaceBetween
+                    IconButton(
+                        onClick = viewModel::clearAttachedSandboxImage,
+                        modifier = Modifier.size(30.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                                modifier = Modifier.border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    RoundedCornerShape(50)
-                                )
-                            ) {
-                                Text(
-                                    text = "SAMSUNG × GBOARD · ANDROID 17 READY",
-                                    color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "Hybrid Keyboard",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "Glide • Soft Mic • Screenshot Clipboard • Translate • Eco",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFFB8C7E0)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Remove image",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             }
 
-            // System IME Activation Card
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (uiState.imeStatus.isSelectedAsDefault) {
-                                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f)
-                                        } else {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (uiState.imeStatus.isSelectedAsDefault) {
-                                        Icons.Rounded.CheckCircle
-                                    } else {
-                                        Icons.Rounded.Keyboard
-                                    },
-                                    contentDescription = "System IME Status",
-                                    tint = if (uiState.imeStatus.isSelectedAsDefault) {
-                                        MaterialTheme.colorScheme.tertiary
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    }
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = when {
-                                        uiState.imeStatus.isSelectedAsDefault -> "Hybrid Keyboard is Active System-Wide"
-                                        uiState.imeStatus.isEnabledInSystem -> "Enabled — Select as Default Keyboard"
-                                        else -> "Enable System-Wide Keyboard"
-                                    },
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Use inside WhatsApp, Chrome, Messages & all apps",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+            Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("enable_ime_button"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Settings,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (uiState.imeStatus.isEnabledInSystem) "IME Settings" else "1. Enable",
-                                maxLines = 1
-                            )
-                        }
-                        FilledTonalButton(
-                            onClick = {
-                                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                                imm.showInputMethodPicker()
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("switch_ime_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.SwapHoriz,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "2. Switch", maxLines = 1)
-                        }
-                    }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                BasicTextField(
+                    value = uiState.sandboxText,
+                    onValueChange = viewModel::updateSandboxValue,
+                    readOnly = true,
+                    textStyle = TextStyle(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 18.sp,
+                        lineHeight = 26.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("live_sandbox_field")
+                )
+                if (uiState.sandboxText.text.isEmpty()) {
+                    Text(
+                        text = "Type, glide swipe, or tap the mic...",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                        fontSize = 18.sp
+                    )
                 }
             }
 
-            // Live Interactive Sandbox Text Area (driven directly by HybridKeyboardView below)
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                        RoundedCornerShape(16.dp)
-                    )
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+            // Show unobtrusive Switch button only if enabled in settings but not yet selected
+            if (uiState.imeStatus.isEnabledInSystem && !uiState.imeStatus.isSelectedAsDefault) {
+                Spacer(modifier = Modifier.height(8.dp))
+                FilledTonalButton(
+                    onClick = {
+                        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                        imm.showInputMethodPicker()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.align(Alignment.End)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "LIVE HYBRID TEST PAD",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable {
-                                        viewModel.saveSandboxToClipboard()
-                                        Toast.makeText(context, "Copied & saved to Hybrid Clipboard", Toast.LENGTH_SHORT).show()
-                                    }
-                                    .testTag("sandbox_copy_button")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.ContentCopy,
-                                        contentDescription = "Copy",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text("Copy", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                                }
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { viewModel.clearSandbox() }
-                                    .testTag("sandbox_clear_button")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.DeleteSweep,
-                                        contentDescription = "Clear",
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text("Clear", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                                }
-                            }
-                        }
-                    }
-
-                    // Pasted Screenshot/Image Preview Attachment
-                    val attached = uiState.attachedSandboxImage
-                    if (attached != null && attached.imagePath != null) {
-                        val bmp = remember(attached.imagePath) {
-                            ClipboardSyncManager.loadThumbnail(attached.imagePath, 240)
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    RoundedCornerShape(12.dp)
-                                )
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (bmp != null) {
-                                Image(
-                                    bitmap = bmp.asImageBitmap(),
-                                    contentDescription = attached.content,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "PASTED FROM CLIPBOARD",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = attached.content,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            IconButton(
-                                onClick = viewModel::clearAttachedSandboxImage,
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Close,
-                                    contentDescription = "Remove Attachment",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 76.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.background)
-                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
-                            .padding(12.dp)
-                    ) {
-                        BasicTextField(
-                            value = uiState.sandboxText,
-                            onValueChange = viewModel::updateSandboxValue,
-                            readOnly = true,
-                            textStyle = TextStyle(
-                                color = MaterialTheme.colorScheme.onBackground,
-                                fontSize = 15.sp,
-                                lineHeight = 22.sp
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("live_sandbox_field")
-                        )
-                        if (uiState.sandboxText.text.isEmpty()) {
-                            Text(
-                                text = "Tap or swipe keys below, tap Soft Mic, or paste a screenshot...",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 14.sp
-                            )
-                        }
-                    }
-
-                    // Quick feature action chips
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        QuickStudioChip(
-                            icon = Icons.Rounded.Mic,
-                            label = if (uiState.voiceState is VoiceDictationState.Listening) "Stop Mic" else "Soft Mic",
-                            active = uiState.voiceState is VoiceDictationState.Listening,
-                            onClick = {
-                                if (uiState.voiceState is VoiceDictationState.Listening) {
-                                    viewModel.stopVoiceDictation()
-                                } else {
-                                    onRequestMicPermissionAndListen()
-                                }
-                            }
-                        )
-                        QuickStudioChip(
-                            icon = Icons.Rounded.AddPhotoAlternate,
-                            label = "+ Screenshot",
-                            active = false,
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            }
-                        )
-                        QuickStudioChip(
-                            icon = Icons.Rounded.PictureInPictureAlt,
-                            label = if (uiState.settings.floatingMode) "Floating: ON" else "Floating",
-                            active = uiState.settings.floatingMode,
-                            onClick = { viewModel.toggleFloatingMode() }
-                        )
-                        QuickStudioChip(
-                            icon = Icons.Rounded.BatterySaver,
-                            label = if (uiState.effectiveEcoActive) "Eco: ON" else "Eco: OFF",
-                            active = uiState.effectiveEcoActive,
-                            onClick = { viewModel.toggleEcoBatteryMode() }
-                        )
-                        QuickStudioChip(
-                            icon = Icons.Rounded.Tune,
-                            label = uiState.settings.language.label,
-                            active = uiState.settings.language != KeyboardLanguage.ENGLISH_US,
-                            onClick = { viewModel.cycleLanguage() }
-                        )
-                    }
+                    Text("Set as default keyboard")
                 }
             }
         }
 
         // Docked Live Interactive Hybrid Keyboard
-        Surface(
-            tonalElevation = 8.dp,
-            shadowElevation = 12.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            HybridKeyboardView(
-                settings = uiState.settings,
-                suggestions = uiState.suggestions,
-                clipboardEntries = uiState.clipboardEntries,
-                voiceState = uiState.voiceState,
-                rmsLevel = uiState.rmsLevel,
-                shiftState = uiState.shiftState,
-                onShiftStateChange = viewModel::setShiftState,
-                showSettingsIcon = true,
-                actions = object : HybridKeyboardActions {
-                    override fun onCommitText(text: String) {
-                        viewModel.commitTextToSandbox(text)
-                    }
+        HybridKeyboardView(
+            settings = uiState.settings,
+            suggestions = uiState.suggestions,
+            clipboardEntries = uiState.clipboardEntries,
+            voiceState = uiState.voiceState,
+            rmsLevel = uiState.rmsLevel,
+            shiftState = uiState.shiftState,
+            onShiftStateChange = viewModel::setShiftState,
+            showSettingsIcon = true,
+            actions = object : HybridKeyboardActions {
+                override fun onCommitText(text: String) {
+                    viewModel.commitTextToSandbox(text)
+                }
 
-                    override fun onCommitWordReplacement(word: String) {
-                        viewModel.replaceWordInSandbox(word)
-                    }
+                override fun onCommitWordReplacement(word: String) {
+                    viewModel.replaceWordInSandbox(word)
+                }
 
-                    override fun onCommitImageEntry(entry: ClipboardEntryEntity) {
-                        viewModel.attachImageToSandbox(entry)
-                        Toast.makeText(
-                            context,
-                            "Pasted ${entry.content} & copied to clipboard",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+                override fun onCommitImageEntry(entry: ClipboardEntryEntity) {
+                    viewModel.attachImageToSandbox(entry)
+                    Toast.makeText(context, "Pasted ${entry.content}", Toast.LENGTH_SHORT).show()
+                }
 
-                    override fun onBackspace(count: Int) {
-                        viewModel.backspaceInSandbox(count)
-                    }
+                override fun onBackspace(count: Int) {
+                    viewModel.backspaceInSandbox(count)
+                }
 
-                    override fun onDeletePreviousWord() {
-                        viewModel.deletePreviousWordInSandbox()
-                    }
+                override fun onDeletePreviousWord() {
+                    viewModel.deletePreviousWordInSandbox()
+                }
 
-                    override fun onDoubleSpacePeriod() {
-                        viewModel.doubleSpacePeriodInSandbox()
-                    }
+                override fun onDoubleSpacePeriod() {
+                    viewModel.doubleSpacePeriodInSandbox()
+                }
 
-                    override fun onEnter() {
-                        viewModel.commitTextToSandbox("\n")
-                    }
+                override fun onEnter() {
+                    viewModel.commitTextToSandbox("\n")
+                }
 
-                    override fun onMoveCursor(delta: Int) {
-                        viewModel.moveCursorInSandbox(delta)
-                    }
+                override fun onMoveCursor(delta: Int) {
+                    viewModel.moveCursorInSandbox(delta)
+                }
 
-                    override fun onTextEditCommand(command: TextEditCommand) {
-                        viewModel.performTextEditInSandbox(command)
-                    }
+                override fun onTextEditCommand(command: TextEditCommand) {
+                    viewModel.performTextEditInSandbox(command)
+                }
 
-                    override fun onSyncSystemClipboard() {
-                        viewModel.syncSystemClipboardNow()
-                    }
+                override fun onSyncSystemClipboard() {
+                    viewModel.syncSystemClipboardNow()
+                }
 
-                    override fun onMicClick() {
-                        if (uiState.voiceState is VoiceDictationState.Listening) {
-                            viewModel.stopVoiceDictation()
-                        } else {
-                            onRequestMicPermissionAndListen()
-                        }
-                    }
-
-                    override fun onStopMic() {
+                override fun onMicClick() {
+                    if (uiState.voiceState is VoiceDictationState.Listening) {
                         viewModel.stopVoiceDictation()
-                    }
-
-                    override fun onDismissMicError() {
-                        viewModel.dismissVoiceError()
-                    }
-
-                    override fun onCycleLanguage() {
-                        viewModel.cycleLanguage()
-                    }
-
-                    override fun onToggleOneHanded() {
-                        viewModel.cycleOneHandedMode()
-                    }
-
-                    override fun onToggleFloatingMode() {
-                        viewModel.toggleFloatingMode()
-                    }
-
-                    override fun onToggleEcoMode() {
-                        viewModel.toggleEcoBatteryMode()
-                    }
-
-                    override fun onToggleClipboardPin(entry: ClipboardEntryEntity) {
-                        viewModel.toggleClipboardPin(entry)
-                    }
-
-                    override fun onDeleteClipboardEntry(id: Int) {
-                        viewModel.deleteClipboardEntry(id)
-                    }
-
-                    override fun onOpenSettings() {
-                        onNavigateToThemes()
+                    } else {
+                        onRequestMicPermissionAndListen()
                     }
                 }
-            )
-        }
-    }
-}
 
-@Composable
-private fun QuickStudioChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    active: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .border(
-                width = 1.dp,
-                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                shape = RoundedCornerShape(12.dp)
-            )
-            .clickable(onClick = onClick)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-            )
-        }
+                override fun onStopMic() {
+                    viewModel.stopVoiceDictation()
+                }
+
+                override fun onDismissMicError() {
+                    viewModel.dismissVoiceError()
+                }
+
+                override fun onCycleLanguage() {
+                    viewModel.cycleLanguage()
+                }
+
+                override fun onToggleOneHanded() {
+                    viewModel.cycleOneHandedMode()
+                }
+
+                override fun onToggleFloatingMode() {
+                    viewModel.toggleFloatingMode()
+                }
+
+                override fun onToggleEcoMode() {
+                    viewModel.toggleEcoBatteryMode()
+                }
+
+                override fun onToggleClipboardPin(entry: ClipboardEntryEntity) {
+                    viewModel.toggleClipboardPin(entry)
+                }
+
+                override fun onDeleteClipboardEntry(id: Int) {
+                    viewModel.deleteClipboardEntry(id)
+                }
+
+                override fun onOpenSettings() {
+                    onNavigateToSettings()
+                }
+            }
+        )
     }
 }

@@ -6,6 +6,12 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -55,6 +61,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -361,7 +368,15 @@ fun HybridKeyboardView(
             }
         }
 
-        when (activePanel) {
+        AnimatedContent(
+            targetState = activePanel,
+            transitionSpec = {
+                val dur = if (settings.ecoBatteryMode) 0 else 130
+                fadeIn(tween(dur)) togetherWith fadeOut(tween((dur * 0.7f).roundToInt()))
+            },
+            label = "keyboard_panel_transition"
+        ) { panel ->
+        when (panel) {
             KeyboardPanel.EMOJI -> {
                 EmojiKeyboardPanel(
                     theme = theme,
@@ -423,7 +438,7 @@ fun HybridKeyboardView(
             KeyboardPanel.ALPHA, KeyboardPanel.SYMBOLS_1, KeyboardPanel.SYMBOLS_2 -> {
                 val scale = if (settings.floatingMode) settings.heightScale * 0.90f else settings.heightScale
                 val baseKeyHeight = (46f * scale).dp
-                val rows = when (activePanel) {
+                val rows = when (panel) {
                     KeyboardPanel.ALPHA -> KeyboardLayouts.rowsForAlpha(
                         language = settings.language,
                         isHindiShifted = shiftState != ShiftState.OFF
@@ -451,7 +466,7 @@ fun HybridKeyboardView(
                             .weight(1f)
                             .padding(horizontal = 4.dp, vertical = 4.dp)
                             .then(
-                                if (settings.glideTypingEnabled && activePanel == KeyboardPanel.ALPHA &&
+                                if (settings.glideTypingEnabled && panel == KeyboardPanel.ALPHA &&
                                     settings.language != KeyboardLanguage.HINDI_DEVANAGARI
                                 ) {
                                     Modifier.pointerInput(settings.language, shiftState, settings.ecoBatteryMode) {
@@ -523,7 +538,7 @@ fun HybridKeyboardView(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             // Dedicated Samsung Number Row
-                            if (settings.showNumberRow && activePanel == KeyboardPanel.ALPHA) {
+                            if (settings.showNumberRow && panel == KeyboardPanel.ALPHA) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -698,6 +713,7 @@ fun HybridKeyboardView(
                 }
             }
         }
+        }
     }
 }
 
@@ -790,16 +806,27 @@ private fun KeyboardKeyCap(
         else -> theme.keyTextColor
     }
 
-    val shape = RoundedCornerShape(7.dp)
+    val shape = RoundedCornerShape(8.dp)
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed && !ecoMode) 0.94f else 1f,
+        animationSpec = tween(durationMillis = if (ecoMode) 0 else 65),
+        label = "key_scale"
+    )
 
     Box(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(shape)
             .background(bgColor)
-            .border(
-                width = if (ecoMode) 0.5.dp else 0.8.dp,
-                color = if (isAction) theme.actionKeyColor else theme.keyBorderColor,
-                shape = shape
+            .then(
+                if (ecoMode) {
+                    Modifier.border(0.5.dp, theme.keyBorderColor, shape)
+                } else {
+                    Modifier
+                }
             )
             .onGloballyPositioned { coords ->
                 onBoundsMeasured(coords.boundsInParent())

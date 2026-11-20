@@ -8,19 +8,19 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.BatterySaver
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Keyboard
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Keyboard
-import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -46,7 +46,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.HybridViewModel
 import com.example.ui.screens.ClipboardDictionaryScreen
-import com.example.ui.screens.EcoSystemScreen
 import com.example.ui.screens.LiveKeyboardScreen
 import com.example.ui.screens.ThemesLayoutScreen
 import com.example.ui.theme.MyApplicationTheme
@@ -57,10 +56,9 @@ private enum class StudioTab(
     val unselectedIcon: ImageVector,
     val tag: String
 ) {
-    SANDBOX(R.string.tab_sandbox, Icons.Rounded.Keyboard, Icons.Outlined.Keyboard, "nav_sandbox"),
-    THEMES(R.string.tab_themes, Icons.Rounded.Palette, Icons.Outlined.Palette, "nav_themes"),
-    CLIPBOARD(R.string.tab_dictionary, Icons.Rounded.ContentPaste, Icons.Outlined.ContentPaste, "nav_clipboard"),
-    ECO(R.string.tab_battery, Icons.Rounded.BatterySaver, Icons.Outlined.BatterySaver, "nav_eco")
+    KEYBOARD(R.string.tab_keyboard, Icons.Rounded.Keyboard, Icons.Outlined.Keyboard, "nav_sandbox"),
+    CLIPBOARD(R.string.tab_clipboard, Icons.Rounded.ContentPaste, Icons.Outlined.ContentPaste, "nav_clipboard"),
+    SETTINGS(R.string.tab_settings, Icons.Rounded.Tune, Icons.Outlined.Tune, "nav_themes")
 }
 
 class MainActivity : ComponentActivity() {
@@ -81,7 +79,7 @@ fun HybridKeyboardStudioApp(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var currentTab by rememberSaveable { mutableStateOf(StudioTab.SANDBOX) }
+    var currentTab by rememberSaveable { mutableStateOf(StudioTab.KEYBOARD) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.refreshImeStatus()
@@ -96,7 +94,7 @@ fun HybridKeyboardStudioApp(
             Toast.makeText(
                 context,
                 context.getString(R.string.mic_permission_rationale),
-                Toast.LENGTH_LONG
+                Toast.LENGTH_SHORT
             ).show()
         }
     }
@@ -117,7 +115,10 @@ fun HybridKeyboardStudioApp(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 if (!useRail) {
-                    NavigationBar {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp
+                    ) {
                         StudioTab.entries.forEach { tab ->
                             val selected = currentTab == tab
                             NavigationBarItem(
@@ -143,7 +144,7 @@ fun HybridKeyboardStudioApp(
                     .padding(innerPadding)
             ) {
                 if (useRail) {
-                    NavigationRail {
+                    NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
                         StudioTab.entries.forEach { tab ->
                             val selected = currentTab == tab
                             NavigationRailItem(
@@ -162,29 +163,28 @@ fun HybridKeyboardStudioApp(
                     }
                 }
 
-                when (currentTab) {
-                    StudioTab.SANDBOX -> LiveKeyboardScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        onRequestMicPermissionAndListen = ::requestMicAndStart,
-                        onNavigateToThemes = { currentTab = StudioTab.THEMES },
-                        modifier = Modifier.weight(1f)
-                    )
-                    StudioTab.THEMES -> ThemesLayoutScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        modifier = Modifier.weight(1f)
-                    )
-                    StudioTab.CLIPBOARD -> ClipboardDictionaryScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        modifier = Modifier.weight(1f)
-                    )
-                    StudioTab.ECO -> EcoSystemScreen(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        modifier = Modifier.weight(1f)
-                    )
+                Crossfade(
+                    targetState = currentTab,
+                    animationSpec = tween(durationMillis = if (uiState.effectiveEcoActive) 0 else 160),
+                    label = "tab_crossfade",
+                    modifier = Modifier.weight(1f)
+                ) { tab ->
+                    when (tab) {
+                        StudioTab.KEYBOARD -> LiveKeyboardScreen(
+                            uiState = uiState,
+                            viewModel = viewModel,
+                            onRequestMicPermissionAndListen = ::requestMicAndStart,
+                            onNavigateToSettings = { currentTab = StudioTab.SETTINGS }
+                        )
+                        StudioTab.CLIPBOARD -> ClipboardDictionaryScreen(
+                            uiState = uiState,
+                            viewModel = viewModel
+                        )
+                        StudioTab.SETTINGS -> ThemesLayoutScreen(
+                            uiState = uiState,
+                            viewModel = viewModel
+                        )
+                    }
                 }
             }
         }
