@@ -1,12 +1,13 @@
 package com.example.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,12 +31,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.BatterySaver
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Tune
@@ -45,17 +49,19 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -68,6 +74,8 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.ClipboardEntryEntity
 import com.example.data.KeyboardLanguage
+import com.example.data.TextEditCommand
+import com.example.engine.ClipboardSyncManager
 import com.example.engine.VoiceDictationState
 import com.example.ui.HybridStudioUiState
 import com.example.ui.HybridViewModel
@@ -84,6 +92,21 @@ fun LiveKeyboardScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importImageToClipboard(uri) { ok ->
+                val msg = if (ok) {
+                    "Screenshot/Image saved to Hybrid Clipboard!"
+                } else {
+                    "Could not import image"
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxSize()
@@ -167,7 +190,7 @@ fun LiveKeyboardScreen(
                                 color = Color.White
                             )
                             Text(
-                                text = "Glide swipe • Soft Voice Mic • Low-Battery Eco",
+                                text = "Glide • Soft Mic • Screenshot Clipboard • Translate • Eco",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color(0xFFB8C7E0)
                             )
@@ -327,10 +350,6 @@ fun LiveKeyboardScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable {
-                                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        cm.setPrimaryClip(
-                                            ClipData.newPlainText("Hybrid Text", uiState.sandboxText.text)
-                                        )
                                         viewModel.saveSandboxToClipboard()
                                         Toast.makeText(context, "Copied & saved to Hybrid Clipboard", Toast.LENGTH_SHORT).show()
                                     }
@@ -375,10 +394,65 @@ fun LiveKeyboardScreen(
                         }
                     }
 
+                    // Pasted Screenshot/Image Preview Attachment
+                    val attached = uiState.attachedSandboxImage
+                    if (attached != null && attached.imagePath != null) {
+                        val bmp = remember(attached.imagePath) {
+                            ClipboardSyncManager.loadThumbnail(attached.imagePath, 240)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (bmp != null) {
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = attached.content,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "PASTED FROM CLIPBOARD",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = attached.content,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            IconButton(
+                                onClick = viewModel::clearAttachedSandboxImage,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Remove Attachment",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 78.dp)
+                            .heightIn(min = 76.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.background)
                             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
@@ -387,7 +461,7 @@ fun LiveKeyboardScreen(
                         BasicTextField(
                             value = uiState.sandboxText,
                             onValueChange = viewModel::updateSandboxValue,
-                            readOnly = true, // Uses embedded HybridKeyboardView directly without popping duplicate IME
+                            readOnly = true,
                             textStyle = TextStyle(
                                 color = MaterialTheme.colorScheme.onBackground,
                                 fontSize = 15.sp,
@@ -400,7 +474,7 @@ fun LiveKeyboardScreen(
                         )
                         if (uiState.sandboxText.text.isEmpty()) {
                             Text(
-                                text = "Tap or swipe keys below, or tap Soft Mic to speak...",
+                                text = "Tap or swipe keys below, tap Soft Mic, or paste a screenshot...",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 14.sp
                             )
@@ -416,7 +490,7 @@ fun LiveKeyboardScreen(
                     ) {
                         QuickStudioChip(
                             icon = Icons.Rounded.Mic,
-                            label = if (uiState.voiceState is VoiceDictationState.Listening) "Stop Voice Mic" else "Soft Voice Mic",
+                            label = if (uiState.voiceState is VoiceDictationState.Listening) "Stop Mic" else "Soft Mic",
                             active = uiState.voiceState is VoiceDictationState.Listening,
                             onClick = {
                                 if (uiState.voiceState is VoiceDictationState.Listening) {
@@ -427,14 +501,30 @@ fun LiveKeyboardScreen(
                             }
                         )
                         QuickStudioChip(
+                            icon = Icons.Rounded.AddPhotoAlternate,
+                            label = "+ Screenshot",
+                            active = false,
+                            onClick = {
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            }
+                        )
+                        QuickStudioChip(
+                            icon = Icons.Rounded.PictureInPictureAlt,
+                            label = if (uiState.settings.floatingMode) "Floating: ON" else "Floating",
+                            active = uiState.settings.floatingMode,
+                            onClick = { viewModel.toggleFloatingMode() }
+                        )
+                        QuickStudioChip(
                             icon = Icons.Rounded.BatterySaver,
-                            label = if (uiState.effectiveEcoActive) "Eco Mode: ON" else "Eco Mode: OFF",
+                            label = if (uiState.effectiveEcoActive) "Eco: ON" else "Eco: OFF",
                             active = uiState.effectiveEcoActive,
                             onClick = { viewModel.toggleEcoBatteryMode() }
                         )
                         QuickStudioChip(
                             icon = Icons.Rounded.Tune,
-                            label = "Lang: ${uiState.settings.language.label}",
+                            label = uiState.settings.language.label,
                             active = uiState.settings.language != KeyboardLanguage.ENGLISH_US,
                             onClick = { viewModel.cycleLanguage() }
                         )
@@ -467,8 +557,25 @@ fun LiveKeyboardScreen(
                         viewModel.replaceWordInSandbox(word)
                     }
 
+                    override fun onCommitImageEntry(entry: ClipboardEntryEntity) {
+                        viewModel.attachImageToSandbox(entry)
+                        Toast.makeText(
+                            context,
+                            "Pasted ${entry.content} & copied to clipboard",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+
                     override fun onBackspace(count: Int) {
                         viewModel.backspaceInSandbox(count)
+                    }
+
+                    override fun onDeletePreviousWord() {
+                        viewModel.deletePreviousWordInSandbox()
+                    }
+
+                    override fun onDoubleSpacePeriod() {
+                        viewModel.doubleSpacePeriodInSandbox()
                     }
 
                     override fun onEnter() {
@@ -477,6 +584,14 @@ fun LiveKeyboardScreen(
 
                     override fun onMoveCursor(delta: Int) {
                         viewModel.moveCursorInSandbox(delta)
+                    }
+
+                    override fun onTextEditCommand(command: TextEditCommand) {
+                        viewModel.performTextEditInSandbox(command)
+                    }
+
+                    override fun onSyncSystemClipboard() {
+                        viewModel.syncSystemClipboardNow()
                     }
 
                     override fun onMicClick() {
@@ -501,6 +616,10 @@ fun LiveKeyboardScreen(
 
                     override fun onToggleOneHanded() {
                         viewModel.cycleOneHandedMode()
+                    }
+
+                    override fun onToggleFloatingMode() {
+                        viewModel.toggleFloatingMode()
                     }
 
                     override fun onToggleEcoMode() {

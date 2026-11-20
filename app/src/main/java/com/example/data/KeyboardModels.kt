@@ -99,7 +99,23 @@ enum class KeyboardPanel {
     SYMBOLS_1,
     SYMBOLS_2,
     EMOJI,
-    CLIPBOARD
+    CLIPBOARD,
+    TEXT_EDIT,
+    TRANSLATE
+}
+
+enum class TextEditCommand {
+    MOVE_LEFT,
+    MOVE_RIGHT,
+    MOVE_UP,
+    MOVE_DOWN,
+    JUMP_START,
+    JUMP_END,
+    SELECT_ALL,
+    CUT,
+    COPY,
+    PASTE,
+    UNDO
 }
 
 enum class ShiftState {
@@ -117,6 +133,10 @@ data class KeyboardSettings(
     val soundOnKeypress: Boolean = false,
     val softMicAlwaysVisible: Boolean = true,
     val autoCapitalize: Boolean = true,
+    val doubleSpacePeriod: Boolean = true,
+    val swipeBackspaceDeleteWord: Boolean = true,
+    val floatingMode: Boolean = false,
+    val autoCaptureClipboard: Boolean = true,
     val oneHandedMode: OneHandedMode = OneHandedMode.OFF,
     val language: KeyboardLanguage = KeyboardLanguage.ENGLISH_US,
     val heightScale: Float = 1.0f,

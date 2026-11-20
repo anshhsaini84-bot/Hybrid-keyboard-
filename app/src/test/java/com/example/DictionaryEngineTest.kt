@@ -3,6 +3,8 @@ package com.example
 import com.example.data.CustomWordEntity
 import com.example.data.KeyboardLanguage
 import com.example.engine.DictionaryEngine
+import com.example.engine.KeyboardLayouts
+import com.example.engine.QuickTranslateEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -44,5 +46,29 @@ class DictionaryEngineTest {
             ecoMode = false
         )
         assertTrue(hinglishSuggestions.contains("नमस्ते"))
+    }
+
+    @Test
+    fun quickTranslateEngine_translatesPhrasesAndWords() {
+        assertEquals(
+            "शुभ प्रभात",
+            QuickTranslateEngine.translate(
+                "Good morning",
+                QuickTranslateEngine.Direction.EN_OR_HINGLISH_TO_HINDI
+            )
+        )
+        assertEquals(
+            "How are you doing?",
+            QuickTranslateEngine.translate(
+                "kya haal hai",
+                QuickTranslateEngine.Direction.HINGLISH_TO_ENGLISH
+            )
+        )
+    }
+
+    @Test
+    fun emojiSearch_findsExpectedEmoji() {
+        val matches = KeyboardLayouts.searchEmojis("namaste")
+        assertTrue(matches.contains("🙏"))
     }
 }

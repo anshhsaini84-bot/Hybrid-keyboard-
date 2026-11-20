@@ -264,6 +264,50 @@ object KeyboardLayouts {
         )
     )
 
+    val kaomojiList: List<String> = listOf(
+        "(◕‿◕)", "(◠‿◠)", "¯\\_(ツ)_/¯", "(づ｡◕‿‿◕｡)づ",
+        "ʕ•ᴥ•ʔ", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "(☞ﾟヮﾟ)☞", "☜(ﾟヮﾟ☜)",
+        "(¬‿¬)", "(•_•)", "(⌐■_■)", "(ಥ﹏ಥ)",
+        "(╥_╥)", "ヾ(⌐■_■)ノ♪", "(ง •̀_•́)ง", "♥(ˆ⌣ˆԅ)",
+        "(*^▽^*)", "(☆▽☆)", "(⊙_⊙)", "(ノಠ益ಠ)ノ彡┻━┻"
+    )
+
+    val emojiKeywords: Map<String, List<String>> = mapOf(
+        "😀" to listOf("happy", "smile", "grin", "joy"),
+        "😂" to listOf("laugh", "lol", "funny", "haha", "tears"),
+        "🤣" to listOf("rofl", "laugh", "funny"),
+        "😍" to listOf("love", "heart", "eyes", "crush"),
+        "🥰" to listOf("love", "hearts", "cute", "warm"),
+        "😎" to listOf("cool", "sunglasses", "swag"),
+        "🥳" to listOf("party", "celebrate", "birthday"),
+        "😭" to listOf("cry", "sad", "sob"),
+        "🙏" to listOf("namaste", "please", "thanks", "pray"),
+        "👍" to listOf("ok", "yes", "good", "thumbs", "like"),
+        "👌" to listOf("nice", "perfect", "ok"),
+        "💪" to listOf("strong", "power", "gym"),
+        "❤️" to listOf("heart", "love", "red"),
+        "🔥" to listOf("fire", "lit", "hot", "awesome"),
+        "✨" to listOf("sparkle", "magic", "shine", "new"),
+        "⚡" to listOf("fast", "bolt", "battery", "power"),
+        "🚀" to listOf("rocket", "launch", "fast"),
+        "💯" to listOf("100", "perfect", "real"),
+        "✅" to listOf("check", "done", "yes"),
+        "⌨️" to listOf("keyboard", "type", "hybrid"),
+        "🎙️" to listOf("mic", "voice", "speak"),
+        "🔋" to listOf("battery", "eco", "charge"),
+        "☕" to listOf("coffee", "chai", "tea", "morning"),
+        "🌙" to listOf("night", "moon", "sleep")
+    )
+
+    fun searchEmojis(query: String): List<String> {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) return emojiCategories.first().emojis
+        val matched = emojiKeywords.entries
+            .filter { (_, words) -> words.any { it.contains(q) } }
+            .map { it.key }
+        return if (matched.isNotEmpty()) matched else emojiCategories.flatMap { it.emojis }.take(16)
+    }
+
     fun rowsForAlpha(language: KeyboardLanguage, isHindiShifted: Boolean): List<List<KeySpec>> {
         return when (language) {
             KeyboardLanguage.HINDI_DEVANAGARI -> if (isHindiShifted) hindiShiftRows else hindiRows

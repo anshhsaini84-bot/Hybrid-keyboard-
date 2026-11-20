@@ -1,11 +1,11 @@
 package com.example.ui.keyboard
 
+import android.content.Context
 import android.media.AudioManager
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,12 +16,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,6 +73,7 @@ import com.example.data.KeyboardPanel
 import com.example.data.KeyboardSettings
 import com.example.data.OneHandedMode
 import com.example.data.ShiftState
+import com.example.data.TextEditCommand
 import com.example.engine.DictionaryEngine
 import com.example.engine.KeySpec
 import com.example.engine.KeyType
@@ -90,14 +87,20 @@ import kotlin.math.roundToInt
 interface HybridKeyboardActions {
     fun onCommitText(text: String)
     fun onCommitWordReplacement(word: String)
+    fun onCommitImageEntry(entry: ClipboardEntryEntity)
     fun onBackspace(count: Int = 1)
+    fun onDeletePreviousWord()
+    fun onDoubleSpacePeriod()
     fun onEnter()
     fun onMoveCursor(delta: Int)
+    fun onTextEditCommand(command: TextEditCommand)
+    fun onSyncSystemClipboard()
     fun onMicClick()
     fun onStopMic()
     fun onDismissMicError()
     fun onCycleLanguage()
     fun onToggleOneHanded()
+    fun onToggleFloatingMode()
     fun onToggleEcoMode()
     fun onToggleClipboardPin(entry: ClipboardEntryEntity)
     fun onDeleteClipboardEntry(id: Int)
@@ -121,6 +124,7 @@ fun HybridKeyboardView(
     val theme = settings.effectiveTheme
     var activePanel by remember { mutableStateOf(KeyboardPanel.ALPHA) }
     var lastShiftTapMs by remember { mutableLongStateOf(0L) }
+    var lastSpaceTapMs by remember { mutableLongStateOf(0L) }
     var pressedKeyPreview by remember { mutableStateOf<Pair<KeySpec, Offset>?>(null) }
     var alternatePickerKey by remember { mutableStateOf<KeySpec?>(null) }
 
@@ -161,6 +165,7 @@ fun HybridKeyboardView(
         triggerFeedback(key.type != KeyType.CHARACTER)
         when (key.type) {
             KeyType.CHARACTER -> {
+                lastSpaceTapMs = 0L
                 val out = if (shiftState != ShiftState.OFF && settings.language != KeyboardLanguage.HINDI_DEVANAGARI) {
                     key.primary.uppercase()
                 } else {
@@ -172,15 +177,28 @@ fun HybridKeyboardView(
                 }
             }
             KeyType.COMMA, KeyType.PERIOD -> {
+                lastSpaceTapMs = 0L
                 actions.onCommitText(key.primary)
             }
             KeyType.SPACE -> {
-                actions.onCommitText(" ")
+                val now = System.currentTimeMillis()
+                if (settings.doubleSpacePeriod && (now - lastSpaceTapMs) in 40L..380L) {
+                    lastSpaceTapMs = 0L
+                    actions.onDoubleSpacePeriod()
+                    if (settings.autoCapitalize) {
+                        onShiftStateChange(ShiftState.SINGLE)
+                    }
+                } else {
+                    lastSpaceTapMs = now
+                    actions.onCommitText(" ")
+                }
             }
             KeyType.BACKSPACE -> {
+                lastSpaceTapMs = 0L
                 actions.onBackspace(1)
             }
             KeyType.ENTER -> {
+                lastSpaceTapMs = 0L
                 actions.onEnter()
             }
             KeyType.SHIFT -> {
@@ -218,12 +236,41 @@ fun HybridKeyboardView(
         }
     }
 
-    Column(
-        modifier = modifier
+    val containerModifier = if (settings.floatingMode) {
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.5.dp, theme.accentColor.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+            .background(theme.backgroundColor)
+            .padding(bottom = 6.dp)
+    } else {
+        modifier
             .fillMaxWidth()
             .background(theme.backgroundColor)
             .padding(bottom = 4.dp)
-    ) {
+    }
+
+    Column(modifier = containerModifier) {
+        if (settings.floatingMode) {
+            // Samsung/Gboard Floating Keyboard Drag Pill
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.utilityBarColor)
+                    .padding(top = 6.dp, bottom = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(42.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(theme.hintTextColor.copy(alpha = 0.6f))
+                )
+            }
+        }
+
         KeyboardTopStrip(
             theme = theme,
             settings = settings,
@@ -231,12 +278,16 @@ fun HybridKeyboardView(
             suggestions = suggestions,
             showSuggestionsMode = activePanel == KeyboardPanel.ALPHA,
             voiceState = voiceState,
+            hasScreenshotInClipboard = clipboardEntries.any { it.isImage },
             onSuggestionClick = { suggestion ->
                 triggerFeedback(true)
                 actions.onCommitWordReplacement(suggestion)
             },
             onPanelToggle = { panel ->
                 triggerFeedback(true)
+                if (panel == KeyboardPanel.CLIPBOARD) {
+                    actions.onSyncSystemClipboard()
+                }
                 activePanel = panel
             },
             onMicClick = {
@@ -250,6 +301,10 @@ fun HybridKeyboardView(
             onToggleOneHanded = {
                 triggerFeedback(true)
                 actions.onToggleOneHanded()
+            },
+            onToggleFloating = {
+                triggerFeedback(true)
+                actions.onToggleFloatingMode()
             },
             onToggleEcoMode = {
                 triggerFeedback(true)
@@ -325,18 +380,49 @@ fun HybridKeyboardView(
                 ClipboardKeyboardPanel(
                     theme = theme,
                     entries = clipboardEntries,
-                    onPasteEntry = { text ->
+                    onPasteTextEntry = { text ->
                         triggerFeedback(true)
                         actions.onCommitText(text)
                         activePanel = KeyboardPanel.ALPHA
+                    },
+                    onPasteImageEntry = { entry ->
+                        triggerFeedback(true)
+                        actions.onCommitImageEntry(entry)
+                        activePanel = KeyboardPanel.ALPHA
+                    },
+                    onSyncSystemClipboard = {
+                        triggerFeedback(true)
+                        actions.onSyncSystemClipboard()
                     },
                     onTogglePin = actions::onToggleClipboardPin,
                     onDeleteEntry = actions::onDeleteClipboardEntry,
                     onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
                 )
             }
+            KeyboardPanel.TEXT_EDIT -> {
+                TextEditKeyboardPanel(
+                    theme = theme,
+                    onCommand = { cmd ->
+                        triggerFeedback(true)
+                        actions.onTextEditCommand(cmd)
+                    },
+                    onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
+                )
+            }
+            KeyboardPanel.TRANSLATE -> {
+                TranslateKeyboardPanel(
+                    theme = theme,
+                    onInsertTranslation = { translated ->
+                        triggerFeedback(true)
+                        actions.onCommitText(translated)
+                        activePanel = KeyboardPanel.ALPHA
+                    },
+                    onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
+                )
+            }
             KeyboardPanel.ALPHA, KeyboardPanel.SYMBOLS_1, KeyboardPanel.SYMBOLS_2 -> {
-                val baseKeyHeight = (46f * settings.heightScale).dp
+                val scale = if (settings.floatingMode) settings.heightScale * 0.90f else settings.heightScale
+                val baseKeyHeight = (46f * scale).dp
                 val rows = when (activePanel) {
                     KeyboardPanel.ALPHA -> KeyboardLayouts.rowsForAlpha(
                         language = settings.language,
@@ -450,6 +536,7 @@ fun HybridKeyboardView(
                                             language = settings.language,
                                             ecoMode = settings.ecoBatteryMode,
                                             spacebarCursorEnabled = false,
+                                            swipeBackspaceWordEnabled = false,
                                             modifier = Modifier
                                                 .weight(numKey.weight)
                                                 .height((baseKeyHeight.value * 0.84f).dp),
@@ -464,6 +551,7 @@ fun HybridKeyboardView(
                                                 }
                                             },
                                             onBackspaceRepeat = {},
+                                            onSwipeDeleteWord = {},
                                             onSpaceCursorMove = {},
                                             onPressPreviewChanged = { offset ->
                                                 pressedKeyPreview = offset?.let { numKey to it }
@@ -491,6 +579,7 @@ fun HybridKeyboardView(
                                             language = settings.language,
                                             ecoMode = settings.ecoBatteryMode,
                                             spacebarCursorEnabled = settings.spacebarCursorEnabled,
+                                            swipeBackspaceWordEnabled = settings.swipeBackspaceDeleteWord,
                                             modifier = Modifier
                                                 .weight(key.weight)
                                                 .height(baseKeyHeight),
@@ -510,6 +599,10 @@ fun HybridKeyboardView(
                                             onBackspaceRepeat = {
                                                 triggerFeedback(false)
                                                 actions.onBackspace(1)
+                                            },
+                                            onSwipeDeleteWord = {
+                                                triggerFeedback(true)
+                                                actions.onDeletePreviousWord()
                                             },
                                             onSpaceCursorMove = { delta ->
                                                 actions.onMoveCursor(delta)
@@ -664,10 +757,12 @@ private fun KeyboardKeyCap(
     language: KeyboardLanguage,
     ecoMode: Boolean,
     spacebarCursorEnabled: Boolean,
+    swipeBackspaceWordEnabled: Boolean,
     modifier: Modifier = Modifier,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
     onBackspaceRepeat: () -> Unit,
+    onSwipeDeleteWord: () -> Unit,
     onSpaceCursorMove: (Int) -> Unit,
     onPressPreviewChanged: (Offset?) -> Unit,
     onBoundsMeasured: (Rect) -> Unit
@@ -676,6 +771,7 @@ private fun KeyboardKeyCap(
     var isPressed by remember { mutableStateOf(false) }
     var windowOrigin by remember { mutableStateOf(Offset.Zero) }
     var spaceDragAccum by remember { mutableFloatStateOf(0f) }
+    var backspaceDragAccum by remember { mutableFloatStateOf(0f) }
 
     val isAction = keySpec.type == KeyType.ENTER
     val isSpecial = keySpec.type != KeyType.CHARACTER && keySpec.type != KeyType.SPACE &&
@@ -710,26 +806,42 @@ private fun KeyboardKeyCap(
                 windowOrigin = coords.positionInWindow()
             }
             .then(
-                if (keySpec.type == KeyType.SPACE && spacebarCursorEnabled) {
-                    Modifier.pointerInput(spacebarCursorEnabled) {
-                        detectDragGestures(
-                            onDragStart = { spaceDragAccum = 0f },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                spaceDragAccum += dragAmount.x
-                                val stepPx = 22f
-                                if (abs(spaceDragAccum) >= stepPx) {
-                                    val steps = (spaceDragAccum / stepPx).toInt()
-                                    if (steps != 0) {
-                                        onSpaceCursorMove(steps)
-                                        spaceDragAccum -= steps * stepPx
+                when {
+                    keySpec.type == KeyType.SPACE && spacebarCursorEnabled -> {
+                        Modifier.pointerInput(spacebarCursorEnabled) {
+                            detectDragGestures(
+                                onDragStart = { spaceDragAccum = 0f },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    spaceDragAccum += dragAmount.x
+                                    val stepPx = 22f
+                                    if (abs(spaceDragAccum) >= stepPx) {
+                                        val steps = (spaceDragAccum / stepPx).toInt()
+                                        if (steps != 0) {
+                                            onSpaceCursorMove(steps)
+                                            spaceDragAccum -= steps * stepPx
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
-                } else {
-                    Modifier
+                    keySpec.type == KeyType.BACKSPACE && swipeBackspaceWordEnabled -> {
+                        Modifier.pointerInput(swipeBackspaceWordEnabled) {
+                            detectDragGestures(
+                                onDragStart = { backspaceDragAccum = 0f },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    backspaceDragAccum += dragAmount.x
+                                    if (backspaceDragAccum <= -48f) {
+                                        onSwipeDeleteWord()
+                                        backspaceDragAccum = 0f
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    else -> Modifier
                 }
             )
             .pointerInput(keySpec.id, shiftState) {

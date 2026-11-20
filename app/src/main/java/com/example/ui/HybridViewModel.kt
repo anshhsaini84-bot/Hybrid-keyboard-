@@ -3,6 +3,7 @@ package com.example.ui
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
+import android.net.Uri
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.text.TextRange
@@ -20,7 +21,9 @@ import com.example.data.KeyboardSettings
 import com.example.data.OneHandedMode
 import com.example.data.SettingsRepository
 import com.example.data.ShiftState
+import com.example.data.TextEditCommand
 import com.example.engine.BatteryMonitor
+import com.example.engine.ClipboardSyncManager
 import com.example.engine.DictionaryEngine
 import com.example.engine.VoiceDictationManager
 import com.example.engine.VoiceDictationState
@@ -28,7 +31,6 @@ import com.example.ime.HybridInputMethodService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,9 +48,10 @@ data class HybridStudioUiState(
     val clipboardEntries: List<ClipboardEntryEntity> = emptyList(),
     val customWords: List<CustomWordEntity> = emptyList(),
     val sandboxText: TextFieldValue = TextFieldValue(
-        text = "Welcome to Hybrid Keyboard! Try glide swipe, voice mic, or Hinglish typing.",
-        selection = TextRange(75)
+        text = "Welcome to Hybrid Keyboard! ",
+        selection = TextRange(28)
     ),
+    val attachedSandboxImage: ClipboardEntryEntity? = null,
     val shiftState: ShiftState = ShiftState.SINGLE,
     val voiceState: VoiceDictationState = VoiceDictationState.Idle,
     val rmsLevel: Float = 0f,
@@ -61,13 +64,16 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
     private val settingsRepo = SettingsRepository(appContext)
     private val dataRepo = HybridDataRepository(HybridDatabase.getInstance(appContext))
     private val voiceManager = VoiceDictationManager(appContext)
+    private val clipboardSync = ClipboardSyncManager(appContext, dataRepo, viewModelScope)
 
+    private val undoStack = ArrayDeque<TextFieldValue>()
     private val _sandboxText = MutableStateFlow(
         TextFieldValue(
             text = "Welcome to Hybrid Keyboard! ",
             selection = TextRange(28)
         )
     )
+    private val _attachedSandboxImage = MutableStateFlow<ClipboardEntryEntity?>(null)
     private val _shiftState = MutableStateFlow(ShiftState.SINGLE)
     private val _imeStatus = MutableStateFlow(readImeStatus())
 
@@ -77,6 +83,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         dataRepo.clipboardEntries,
         dataRepo.customWords,
         _sandboxText,
+        _attachedSandboxImage,
         _shiftState,
         voiceManager.state,
         voiceManager.rmsLevel,
@@ -89,10 +96,13 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         @Suppress("UNCHECKED_CAST")
         val customWords = values[3] as List<CustomWordEntity>
         val sandbox = values[4] as TextFieldValue
-        val shift = values[5] as ShiftState
-        val voice = values[6] as VoiceDictationState
-        val rms = values[7] as Float
-        val imeStatus = values[8] as ImeActivationStatus
+        val attachedImg = values[5] as ClipboardEntryEntity?
+        val shift = values[6] as ShiftState
+        val voice = values[7] as VoiceDictationState
+        val rms = values[8] as Float
+        val imeStatus = values[9] as ImeActivationStatus
+
+        clipboardSync.setAutoCaptureEnabled(settings.autoCaptureClipboard)
 
         val autoEcoTriggered = settings.autoEcoOnLowBattery &&
             !battery.isCharging &&
@@ -117,6 +127,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
             clipboardEntries = clipboard,
             customWords = customWords,
             sandboxText = sandbox,
+            attachedSandboxImage = attachedImg,
             shiftState = shift,
             voiceState = voice,
             rmsLevel = rms,
@@ -129,6 +140,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
     )
 
     init {
+        clipboardSync.startObserving()
         viewModelScope.launch {
             dataRepo.ensureDefaultsSeeded()
         }
@@ -136,6 +148,33 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
 
     fun refreshImeStatus() {
         _imeStatus.value = readImeStatus()
+        if (uiState.value.settings.autoCaptureClipboard) {
+            clipboardSync.captureCurrentSystemClip()
+        }
+    }
+
+    fun syncSystemClipboardNow() {
+        clipboardSync.captureCurrentSystemClip()
+    }
+
+    fun importImageToClipboard(uri: Uri, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val ok = clipboardSync.importImageFromUri(uri)
+            onResult(ok)
+        }
+    }
+
+    fun copyImageEntryToSystemClipboard(entry: ClipboardEntryEntity): Boolean {
+        return clipboardSync.copyImageEntryToSystemClipboard(entry) != null
+    }
+
+    fun attachImageToSandbox(entry: ClipboardEntryEntity) {
+        _attachedSandboxImage.value = entry
+        clipboardSync.copyImageEntryToSystemClipboard(entry)
+    }
+
+    fun clearAttachedSandboxImage() {
+        _attachedSandboxImage.value = null
     }
 
     private fun readImeStatus(): ImeActivationStatus {
@@ -157,6 +196,11 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun pushUndoSnapshot() {
+        if (undoStack.size >= 25) undoStack.removeFirst()
+        undoStack.addLast(_sandboxText.value)
+    }
+
     fun updateSandboxValue(value: TextFieldValue) {
         _sandboxText.value = value
     }
@@ -166,6 +210,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun commitTextToSandbox(text: String) {
+        pushUndoSnapshot()
         val current = _sandboxText.value
         val start = current.selection.min.coerceIn(0, current.text.length)
         val end = current.selection.max.coerceIn(start, current.text.length)
@@ -186,7 +231,36 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun doubleSpacePeriodInSandbox() {
+        val current = _sandboxText.value
+        val cursor = current.selection.min.coerceIn(0, current.text.length)
+        val before = current.text.substring(0, cursor)
+        if (before.endsWith(" ") && before.length >= 2 && before[before.length - 2].isLetterOrDigit()) {
+            pushUndoSnapshot()
+            val newText = before.dropLast(1) + ". " + current.text.substring(cursor)
+            _sandboxText.value = TextFieldValue(newText, TextRange(cursor + 1))
+        } else {
+            commitTextToSandbox(" ")
+        }
+    }
+
+    fun deletePreviousWordInSandbox() {
+        val current = _sandboxText.value
+        val cursor = current.selection.min.coerceIn(0, current.text.length)
+        if (cursor == 0) return
+        val before = current.text.substring(0, cursor)
+        var idx = before.length
+        while (idx > 0 && before[idx - 1].isWhitespace()) idx--
+        while (idx > 0 && !before[idx - 1].isWhitespace()) idx--
+        if (idx < cursor) {
+            pushUndoSnapshot()
+            val newText = current.text.removeRange(idx, cursor)
+            _sandboxText.value = TextFieldValue(newText, TextRange(idx))
+        }
+    }
+
     fun replaceWordInSandbox(replacement: String) {
+        pushUndoSnapshot()
         val current = _sandboxText.value
         val cursor = current.selection.min.coerceIn(0, current.text.length)
         val before = current.text.substring(0, cursor)
@@ -206,9 +280,11 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         val start = current.selection.min.coerceIn(0, current.text.length)
         val end = current.selection.max.coerceIn(start, current.text.length)
         if (start != end) {
+            pushUndoSnapshot()
             val newText = current.text.removeRange(start, end)
             _sandboxText.value = TextFieldValue(newText, TextRange(start))
         } else if (start > 0) {
+            pushUndoSnapshot()
             val deleteFrom = (start - count).coerceAtLeast(0)
             val newText = current.text.removeRange(deleteFrom, start)
             _sandboxText.value = TextFieldValue(newText, TextRange(deleteFrom))
@@ -224,8 +300,57 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         _sandboxText.value = current.copy(selection = TextRange(next))
     }
 
+    fun performTextEditInSandbox(command: TextEditCommand) {
+        val current = _sandboxText.value
+        when (command) {
+            TextEditCommand.MOVE_LEFT -> moveCursorInSandbox(-1)
+            TextEditCommand.MOVE_RIGHT -> moveCursorInSandbox(1)
+            TextEditCommand.MOVE_UP -> moveCursorInSandbox(-18)
+            TextEditCommand.MOVE_DOWN -> moveCursorInSandbox(18)
+            TextEditCommand.JUMP_START -> _sandboxText.value = current.copy(selection = TextRange(0))
+            TextEditCommand.JUMP_END -> _sandboxText.value = current.copy(selection = TextRange(current.text.length))
+            TextEditCommand.SELECT_ALL -> _sandboxText.value = current.copy(selection = TextRange(0, current.text.length))
+            TextEditCommand.COPY -> {
+                val selected = if (!current.selection.collapsed) {
+                    current.text.substring(current.selection.min, current.selection.max)
+                } else {
+                    current.text
+                }
+                if (selected.isNotBlank()) {
+                    clipboardSync.copyTextToSystemClipboard(selected)
+                    viewModelScope.launch { dataRepo.addClipboardText(selected) }
+                }
+            }
+            TextEditCommand.CUT -> {
+                val start = current.selection.min.coerceIn(0, current.text.length)
+                val end = current.selection.max.coerceIn(start, current.text.length)
+                val cutText = if (start != end) current.text.substring(start, end) else current.text
+                if (cutText.isNotBlank()) {
+                    pushUndoSnapshot()
+                    clipboardSync.copyTextToSystemClipboard(cutText)
+                    viewModelScope.launch { dataRepo.addClipboardText(cutText) }
+                    val remaining = if (start != end) current.text.removeRange(start, end) else ""
+                    _sandboxText.value = TextFieldValue(remaining, TextRange(if (start != end) start else 0))
+                }
+            }
+            TextEditCommand.PASTE -> {
+                val latestText = uiState.value.clipboardEntries.firstOrNull { !it.isImage }?.content
+                if (!latestText.isNullOrBlank()) {
+                    commitTextToSandbox(latestText)
+                }
+            }
+            TextEditCommand.UNDO -> {
+                if (undoStack.isNotEmpty()) {
+                    _sandboxText.value = undoStack.removeLast()
+                }
+            }
+        }
+    }
+
     fun clearSandbox() {
+        pushUndoSnapshot()
         _sandboxText.value = TextFieldValue("", TextRange(0))
+        _attachedSandboxImage.value = null
         if (uiState.value.settings.autoCapitalize) {
             _shiftState.value = ShiftState.SINGLE
         }
@@ -234,6 +359,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
     fun saveSandboxToClipboard() {
         val text = _sandboxText.value.text.trim()
         if (text.isNotEmpty()) {
+            clipboardSync.copyTextToSystemClipboard(text)
             viewModelScope.launch {
                 dataRepo.addClipboardText(text, pinned = false)
             }
@@ -278,6 +404,26 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleSpacebarCursor(enabled: Boolean) {
         viewModelScope.launch { settingsRepo.updateSettings { it.copy(spacebarCursorEnabled = enabled) } }
+    }
+
+    fun toggleDoubleSpacePeriod(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.updateSettings { it.copy(doubleSpacePeriod = enabled) } }
+    }
+
+    fun toggleSwipeBackspaceWord(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.updateSettings { it.copy(swipeBackspaceDeleteWord = enabled) } }
+    }
+
+    fun toggleFloatingMode(enabled: Boolean? = null) {
+        viewModelScope.launch {
+            settingsRepo.updateSettings { cur ->
+                cur.copy(floatingMode = enabled ?: !cur.floatingMode)
+            }
+        }
+    }
+
+    fun toggleAutoCaptureClipboard(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.updateSettings { it.copy(autoCaptureClipboard = enabled) } }
     }
 
     fun toggleHaptics(enabled: Boolean) {
@@ -371,6 +517,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() {
+        clipboardSync.stopObserving()
         voiceManager.stopListening()
         super.onCleared()
     }

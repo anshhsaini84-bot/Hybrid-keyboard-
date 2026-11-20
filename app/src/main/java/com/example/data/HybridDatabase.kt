@@ -11,14 +11,21 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 
 @Entity(tableName = "clipboard_entries")
 data class ClipboardEntryEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val content: String,
+    val imagePath: String? = null,
+    val mimeType: String? = null,
+    val isScreenshot: Boolean = false,
     val isPinned: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    val isImage: Boolean
+        get() = !imagePath.isNullOrBlank()
+}
 
 @Entity(tableName = "custom_words")
 data class CustomWordEntity(
@@ -30,14 +37,26 @@ data class CustomWordEntity(
 
 @Dao
 interface ClipboardDao {
-    @Query("SELECT * FROM clipboard_entries ORDER BY isPinned DESC, timestamp DESC LIMIT 40")
+    @Query("SELECT * FROM clipboard_entries ORDER BY isPinned DESC, timestamp DESC LIMIT 50")
     fun observeAll(): Flow<List<ClipboardEntryEntity>>
+
+    @Query("SELECT * FROM clipboard_entries WHERE content = :content AND imagePath IS NULL LIMIT 1")
+    suspend fun findByText(content: String): ClipboardEntryEntity?
+
+    @Query("SELECT * FROM clipboard_entries WHERE id = :id LIMIT 1")
+    suspend fun findById(id: Int): ClipboardEntryEntity?
+
+    @Query("SELECT * FROM clipboard_entries WHERE isPinned = 0")
+    suspend fun getUnpinned(): List<ClipboardEntryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: ClipboardEntryEntity)
 
     @Query("UPDATE clipboard_entries SET isPinned = :pinned WHERE id = :id")
     suspend fun setPinned(id: Int, pinned: Boolean)
+
+    @Query("UPDATE clipboard_entries SET timestamp = :timestamp WHERE id = :id")
+    suspend fun touchTimestamp(id: Int, timestamp: Long)
 
     @Query("DELETE FROM clipboard_entries WHERE id = :id")
     suspend fun deleteById(id: Int)
@@ -66,7 +85,7 @@ interface CustomWordDao {
 
 @Database(
     entities = [ClipboardEntryEntity::class, CustomWordEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class HybridDatabase : RoomDatabase() {
@@ -83,7 +102,10 @@ abstract class HybridDatabase : RoomDatabase() {
                     context.applicationContext,
                     HybridDatabase::class.java,
                     "hybrid_keyboard_db"
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }
@@ -97,13 +119,13 @@ class HybridDataRepository(private val db: HybridDatabase) {
         if (db.clipboardDao().count() == 0) {
             db.clipboardDao().insert(
                 ClipboardEntryEntity(
-                    content = "Hybrid Keyboard: Samsung layout + Gboard glide + Voice Mic",
+                    content = "Hybrid Keyboard: Samsung layout + Gboard glide + Screenshot Clipboard",
                     isPinned = true
                 )
             )
             db.clipboardDao().insert(
                 ClipboardEntryEntity(
-                    content = "Namaste! Ready for smooth typing with Eco battery mode.",
+                    content = "Namaste! Copied text & screenshots appear here automatically.",
                     isPinned = false
                 )
             )
@@ -122,9 +144,32 @@ class HybridDataRepository(private val db: HybridDatabase) {
 
     suspend fun addClipboardText(text: String, pinned: Boolean = false) {
         val trimmed = text.trim()
-        if (trimmed.isNotEmpty()) {
+        if (trimmed.isEmpty()) return
+        val existing = db.clipboardDao().findByText(trimmed)
+        if (existing != null) {
+            db.clipboardDao().touchTimestamp(existing.id, System.currentTimeMillis())
+        } else {
             db.clipboardDao().insert(ClipboardEntryEntity(content = trimmed, isPinned = pinned))
         }
+    }
+
+    suspend fun addClipboardImage(
+        label: String,
+        imagePath: String,
+        mimeType: String,
+        isScreenshot: Boolean,
+        pinned: Boolean = false
+    ) {
+        db.clipboardDao().insert(
+            ClipboardEntryEntity(
+                content = label,
+                imagePath = imagePath,
+                mimeType = mimeType,
+                isScreenshot = isScreenshot,
+                isPinned = pinned,
+                timestamp = System.currentTimeMillis()
+            )
+        )
     }
 
     suspend fun togglePin(id: Int, currentlyPinned: Boolean) {
@@ -132,10 +177,20 @@ class HybridDataRepository(private val db: HybridDatabase) {
     }
 
     suspend fun deleteClipboardEntry(id: Int) {
+        val entry = db.clipboardDao().findById(id)
+        entry?.imagePath?.let { path ->
+            runCatching { File(path).delete() }
+        }
         db.clipboardDao().deleteById(id)
     }
 
     suspend fun clearUnpinnedClipboard() {
+        val unpinned = db.clipboardDao().getUnpinned()
+        unpinned.forEach { entry ->
+            entry.imagePath?.let { path ->
+                runCatching { File(path).delete() }
+            }
+        }
         db.clipboardDao().clearUnpinned()
     }
 

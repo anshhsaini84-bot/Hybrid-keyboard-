@@ -26,6 +26,10 @@ class SettingsRepository(private val context: Context) {
         val SOUND_ON_KEY = booleanPreferencesKey("sound_on_key")
         val SOFT_MIC_VISIBLE = booleanPreferencesKey("soft_mic_visible")
         val AUTO_CAPITALIZE = booleanPreferencesKey("auto_capitalize")
+        val DOUBLE_SPACE_PERIOD = booleanPreferencesKey("double_space_period")
+        val SWIPE_BACKSPACE_WORD = booleanPreferencesKey("swipe_backspace_word")
+        val FLOATING_MODE = booleanPreferencesKey("floating_mode")
+        val AUTO_CAPTURE_CLIPBOARD = booleanPreferencesKey("auto_capture_clipboard")
         val ONE_HANDED_MODE = stringPreferencesKey("one_handed_mode")
         val LANGUAGE = stringPreferencesKey("language")
         val HEIGHT_SCALE = floatPreferencesKey("height_scale")
@@ -33,8 +37,8 @@ class SettingsRepository(private val context: Context) {
         val AUTO_ECO_LOW_BATTERY = booleanPreferencesKey("auto_eco_low_battery")
     }
 
-    val settingsFlow: Flow<KeyboardSettings> = context.keyboardDataStore.data.map { prefs ->
-        KeyboardSettings(
+    private fun readFromPreferences(prefs: Preferences): KeyboardSettings {
+        return KeyboardSettings(
             themeStyle = prefs[Keys.THEME_STYLE]?.let {
                 runCatching { HybridThemeStyle.valueOf(it) }.getOrNull()
             } ?: HybridThemeStyle.OLED_OBSIDIAN,
@@ -45,6 +49,10 @@ class SettingsRepository(private val context: Context) {
             soundOnKeypress = prefs[Keys.SOUND_ON_KEY] ?: false,
             softMicAlwaysVisible = prefs[Keys.SOFT_MIC_VISIBLE] ?: true,
             autoCapitalize = prefs[Keys.AUTO_CAPITALIZE] ?: true,
+            doubleSpacePeriod = prefs[Keys.DOUBLE_SPACE_PERIOD] ?: true,
+            swipeBackspaceDeleteWord = prefs[Keys.SWIPE_BACKSPACE_WORD] ?: true,
+            floatingMode = prefs[Keys.FLOATING_MODE] ?: false,
+            autoCaptureClipboard = prefs[Keys.AUTO_CAPTURE_CLIPBOARD] ?: true,
             oneHandedMode = prefs[Keys.ONE_HANDED_MODE]?.let {
                 runCatching { OneHandedMode.valueOf(it) }.getOrNull()
             } ?: OneHandedMode.OFF,
@@ -57,30 +65,11 @@ class SettingsRepository(private val context: Context) {
         )
     }
 
+    val settingsFlow: Flow<KeyboardSettings> = context.keyboardDataStore.data.map(::readFromPreferences)
+
     suspend fun updateSettings(transform: (KeyboardSettings) -> KeyboardSettings) {
         context.keyboardDataStore.edit { prefs ->
-            val current = KeyboardSettings(
-                themeStyle = prefs[Keys.THEME_STYLE]?.let {
-                    runCatching { HybridThemeStyle.valueOf(it) }.getOrNull()
-                } ?: HybridThemeStyle.OLED_OBSIDIAN,
-                showNumberRow = prefs[Keys.SHOW_NUMBER_ROW] ?: true,
-                glideTypingEnabled = prefs[Keys.GLIDE_TYPING] ?: true,
-                spacebarCursorEnabled = prefs[Keys.SPACEBAR_CURSOR] ?: true,
-                hapticFeedbackEnabled = prefs[Keys.HAPTIC_FEEDBACK] ?: true,
-                soundOnKeypress = prefs[Keys.SOUND_ON_KEY] ?: false,
-                softMicAlwaysVisible = prefs[Keys.SOFT_MIC_VISIBLE] ?: true,
-                autoCapitalize = prefs[Keys.AUTO_CAPITALIZE] ?: true,
-                oneHandedMode = prefs[Keys.ONE_HANDED_MODE]?.let {
-                    runCatching { OneHandedMode.valueOf(it) }.getOrNull()
-                } ?: OneHandedMode.OFF,
-                language = prefs[Keys.LANGUAGE]?.let {
-                    runCatching { KeyboardLanguage.valueOf(it) }.getOrNull()
-                } ?: KeyboardLanguage.ENGLISH_US,
-                heightScale = (prefs[Keys.HEIGHT_SCALE] ?: 1.0f).coerceIn(0.85f, 1.15f),
-                ecoBatteryMode = prefs[Keys.ECO_BATTERY_MODE] ?: false,
-                autoEcoOnLowBattery = prefs[Keys.AUTO_ECO_LOW_BATTERY] ?: true
-            )
-            val updated = transform(current)
+            val updated = transform(readFromPreferences(prefs))
             prefs[Keys.THEME_STYLE] = updated.themeStyle.name
             prefs[Keys.SHOW_NUMBER_ROW] = updated.showNumberRow
             prefs[Keys.GLIDE_TYPING] = updated.glideTypingEnabled
@@ -89,6 +78,10 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.SOUND_ON_KEY] = updated.soundOnKeypress
             prefs[Keys.SOFT_MIC_VISIBLE] = updated.softMicAlwaysVisible
             prefs[Keys.AUTO_CAPITALIZE] = updated.autoCapitalize
+            prefs[Keys.DOUBLE_SPACE_PERIOD] = updated.doubleSpacePeriod
+            prefs[Keys.SWIPE_BACKSPACE_WORD] = updated.swipeBackspaceDeleteWord
+            prefs[Keys.FLOATING_MODE] = updated.floatingMode
+            prefs[Keys.AUTO_CAPTURE_CLIPBOARD] = updated.autoCaptureClipboard
             prefs[Keys.ONE_HANDED_MODE] = updated.oneHandedMode.name
             prefs[Keys.LANGUAGE] = updated.language.name
             prefs[Keys.HEIGHT_SCALE] = updated.heightScale

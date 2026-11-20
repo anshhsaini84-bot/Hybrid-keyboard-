@@ -3,6 +3,7 @@ package com.example.ui.keyboard
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.rounded.BatterySaver
@@ -35,29 +37,41 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.EmojiEmotions
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
+import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Screenshot
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Smartphone
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +81,7 @@ import com.example.data.HybridThemeStyle
 import com.example.data.KeyboardLanguage
 import com.example.data.KeyboardPanel
 import com.example.data.KeyboardSettings
+import com.example.engine.ClipboardSyncManager
 import com.example.engine.KeyboardLayouts
 import com.example.engine.VoiceDictationState
 
@@ -78,11 +93,13 @@ fun KeyboardTopStrip(
     suggestions: List<String>,
     showSuggestionsMode: Boolean,
     voiceState: VoiceDictationState,
+    hasScreenshotInClipboard: Boolean,
     onSuggestionClick: (String) -> Unit,
     onPanelToggle: (KeyboardPanel) -> Unit,
     onMicClick: () -> Unit,
     onCycleLanguage: () -> Unit,
     onToggleOneHanded: () -> Unit,
+    onToggleFloating: () -> Unit,
     onToggleEcoMode: () -> Unit,
     onOpenSettings: (() -> Unit)?
 ) {
@@ -91,7 +108,7 @@ fun KeyboardTopStrip(
             .fillMaxWidth()
             .background(theme.utilityBarColor)
     ) {
-        // Samsung-style quick utility ribbon
+        // Samsung + Gboard full quick utility ribbon
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -109,7 +126,7 @@ fun KeyboardTopStrip(
             ) {
                 UtilityIconButton(
                     icon = if (activePanel == KeyboardPanel.EMOJI) Icons.Rounded.Keyboard else Icons.Rounded.EmojiEmotions,
-                    contentDescription = "Emoji Panel",
+                    contentDescription = "Emoji & Kaomoji Panel",
                     isActive = activePanel == KeyboardPanel.EMOJI,
                     theme = theme,
                     testTag = "kbd_util_emoji",
@@ -119,15 +136,51 @@ fun KeyboardTopStrip(
                         )
                     }
                 )
+                Box {
+                    UtilityIconButton(
+                        icon = Icons.Rounded.ContentPaste,
+                        contentDescription = "Clipboard & Screenshots",
+                        isActive = activePanel == KeyboardPanel.CLIPBOARD,
+                        theme = theme,
+                        testTag = "kbd_util_clipboard",
+                        onClick = {
+                            onPanelToggle(
+                                if (activePanel == KeyboardPanel.CLIPBOARD) KeyboardPanel.ALPHA else KeyboardPanel.CLIPBOARD
+                            )
+                        }
+                    )
+                    if (hasScreenshotInClipboard) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 6.dp, end = 6.dp)
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(theme.accentColor)
+                        )
+                    }
+                }
                 UtilityIconButton(
-                    icon = Icons.Rounded.ContentPaste,
-                    contentDescription = "Clipboard",
-                    isActive = activePanel == KeyboardPanel.CLIPBOARD,
+                    icon = Icons.Rounded.OpenWith,
+                    contentDescription = "Text Editing Cursor Pad",
+                    isActive = activePanel == KeyboardPanel.TEXT_EDIT,
                     theme = theme,
-                    testTag = "kbd_util_clipboard",
+                    testTag = "kbd_util_text_edit",
                     onClick = {
                         onPanelToggle(
-                            if (activePanel == KeyboardPanel.CLIPBOARD) KeyboardPanel.ALPHA else KeyboardPanel.CLIPBOARD
+                            if (activePanel == KeyboardPanel.TEXT_EDIT) KeyboardPanel.ALPHA else KeyboardPanel.TEXT_EDIT
+                        )
+                    }
+                )
+                UtilityIconButton(
+                    icon = Icons.Rounded.Translate,
+                    contentDescription = "Instant Translate",
+                    isActive = activePanel == KeyboardPanel.TRANSLATE,
+                    theme = theme,
+                    testTag = "kbd_util_translate",
+                    onClick = {
+                        onPanelToggle(
+                            if (activePanel == KeyboardPanel.TRANSLATE) KeyboardPanel.ALPHA else KeyboardPanel.TRANSLATE
                         )
                     }
                 )
@@ -146,6 +199,14 @@ fun KeyboardTopStrip(
                     theme = theme,
                     testTag = "kbd_util_one_handed",
                     onClick = onToggleOneHanded
+                )
+                UtilityIconButton(
+                    icon = Icons.Rounded.PictureInPictureAlt,
+                    contentDescription = "Floating Keyboard Mode",
+                    isActive = settings.floatingMode,
+                    theme = theme,
+                    testTag = "kbd_util_floating",
+                    onClick = onToggleFloating
                 )
                 UtilityIconButton(
                     icon = Icons.Rounded.BatterySaver,
@@ -382,38 +443,186 @@ fun EmojiKeyboardPanel(
     onBackToAlpha: () -> Unit
 ) {
     var selectedCategory by remember { mutableIntStateOf(0) }
+    var showKaomoji by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val recentEmojis = remember { mutableStateListOf("😂", "🙏", "🔥", "❤️", "👍", "✨") }
     val categories = KeyboardLayouts.emojiCategories
+
+    fun pickEmoji(e: String) {
+        recentEmojis.remove(e)
+        recentEmojis.add(0, e)
+        if (recentEmojis.size > 10) recentEmojis.removeAt(recentEmojis.lastIndex)
+        onEmojiClick(e)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(232.dp)
+            .height(250.dp)
             .background(theme.backgroundColor)
     ) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(8),
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            contentPadding = PaddingValues(4.dp)
-        ) {
-            items(categories[selectedCategory].emojis) { emoji ->
-                Box(
-                    modifier = Modifier
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onEmojiClick(emoji) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = emoji, fontSize = 23.sp)
-                }
-            }
-        }
+        // Emoji Search & Mode Strip (Emoji vs Kaomoji)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(theme.specialKeyColor)
+                    .border(1.dp, theme.keyBorderColor, RoundedCornerShape(15.dp))
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = "Search Emoji",
+                    tint = theme.hintTextColor,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Box(modifier = Modifier.weight(1f)) {
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            showKaomoji = false
+                        },
+                        singleLine = true,
+                        textStyle = TextStyle(color = theme.keyTextColor, fontSize = 12.sp),
+                        cursorBrush = SolidColor(theme.accentColor),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = "Search emoji (love, fire, namaste...)",
+                            color = theme.hintTextColor,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (showKaomoji) theme.accentColor.copy(alpha = 0.22f) else theme.keyColor,
+                modifier = Modifier
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { showKaomoji = !showKaomoji }
+                    .testTag("emoji_kaomoji_toggle")
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (showKaomoji) "😀" else ":-)",
+                        color = if (showKaomoji) theme.accentColor else theme.keyTextColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        if (showKaomoji) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(vertical = 4.dp)
+            ) {
+                items(KeyboardLayouts.kaomojiList) { face ->
+                    Box(
+                        modifier = Modifier
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(theme.keyColor)
+                            .border(1.dp, theme.keyBorderColor, RoundedCornerShape(10.dp))
+                            .clickable { onEmojiClick(face) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = face,
+                            color = theme.keyTextColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        } else {
+            // Recently Used strip
+            if (searchQuery.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Recent",
+                        color = theme.hintTextColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    recentEmojis.take(7).forEach { e ->
+                        Text(
+                            text = e,
+                            fontSize = 19.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { pickEmoji(e) }
+                                .padding(horizontal = 3.dp)
+                        )
+                    }
+                }
+            }
+
+            val itemsToDisplay = if (searchQuery.isNotBlank()) {
+                KeyboardLayouts.searchEmojis(searchQuery)
+            } else {
+                categories[selectedCategory].emojis
+            }
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(8),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp),
+                contentPadding = PaddingValues(4.dp)
+            ) {
+                items(itemsToDisplay) { emoji ->
+                    Box(
+                        modifier = Modifier
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { pickEmoji(emoji) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = emoji, fontSize = 22.sp)
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp)
                 .background(theme.utilityBarColor)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -441,13 +650,17 @@ fun EmojiKeyboardPanel(
                             .size(34.dp)
                             .clip(CircleShape)
                             .background(
-                                if (idx == selectedCategory) theme.accentColor.copy(alpha = 0.2f)
+                                if (!showKaomoji && idx == selectedCategory) theme.accentColor.copy(alpha = 0.2f)
                                 else Color.Transparent
                             )
-                            .clickable { selectedCategory = idx },
+                            .clickable {
+                                showKaomoji = false
+                                searchQuery = ""
+                                selectedCategory = idx
+                            },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = cat.icon, fontSize = 18.sp)
+                        Text(text = cat.icon, fontSize = 17.sp)
                     }
                 }
             }
@@ -467,7 +680,9 @@ fun EmojiKeyboardPanel(
 fun ClipboardKeyboardPanel(
     theme: HybridThemeStyle,
     entries: List<ClipboardEntryEntity>,
-    onPasteEntry: (String) -> Unit,
+    onPasteTextEntry: (String) -> Unit,
+    onPasteImageEntry: (ClipboardEntryEntity) -> Unit,
+    onSyncSystemClipboard: () -> Unit,
     onTogglePin: (ClipboardEntryEntity) -> Unit,
     onDeleteEntry: (Int) -> Unit,
     onBackToAlpha: () -> Unit
@@ -475,32 +690,64 @@ fun ClipboardKeyboardPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(232.dp)
+            .height(244.dp)
             .background(theme.backgroundColor)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Samsung × Hybrid Clipboard",
+                text = "Clipboard • Text & Screenshots",
                 color = theme.hintTextColor,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
-            Text(
-                text = "Back to Keys",
-                color = theme.accentColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable(onClick = onBackToAlpha)
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = theme.keyColor,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onSyncSystemClipboard)
+                        .testTag("kbd_clipboard_sync_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = "Sync System Clipboard",
+                            tint = theme.accentColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "Sync",
+                            color = theme.keyTextColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Text(
+                    text = "Keys",
+                    color = theme.accentColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(onClick = onBackToAlpha)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
         }
         if (entries.isEmpty()) {
             Box(
@@ -508,7 +755,7 @@ fun ClipboardKeyboardPanel(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Clipboard is empty. Copy text to pin & paste fast!",
+                    text = "Copy text or take a screenshot — it appears here!",
                     color = theme.hintTextColor,
                     fontSize = 13.sp
                 )
@@ -522,24 +769,75 @@ fun ClipboardKeyboardPanel(
                 contentPadding = PaddingValues(bottom = 8.dp)
             ) {
                 items(entries, key = { it.id }) { item ->
+                    val thumb = remember(item.imagePath) {
+                        item.imagePath?.let { ClipboardSyncManager.loadThumbnail(it, 180) }
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(theme.keyColor)
-                            .border(1.dp, theme.keyBorderColor, RoundedCornerShape(10.dp))
-                            .clickable { onPasteEntry(item.content) }
+                            .border(
+                                width = 1.dp,
+                                color = if (item.isImage) theme.accentColor.copy(alpha = 0.55f) else theme.keyBorderColor,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .clickable {
+                                if (item.isImage) onPasteImageEntry(item) else onPasteTextEntry(item.content)
+                            }
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = item.content,
-                            color = theme.keyTextColor,
-                            fontSize = 13.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                        if (item.isImage) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(theme.specialKeyColor),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (thumb != null) {
+                                    Image(
+                                        bitmap = thumb.asImageBitmap(),
+                                        contentDescription = item.content,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = if (item.isScreenshot) Icons.Rounded.Screenshot else Icons.Rounded.Image,
+                                        contentDescription = "Screenshot",
+                                        tint = theme.accentColor,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (item.isScreenshot) "SCREENSHOT · TAP TO PASTE" else "IMAGE · TAP TO PASTE",
+                                    color = theme.accentColor,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = item.content,
+                                    color = theme.keyTextColor,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = item.content,
+                                color = theme.keyTextColor,
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                         IconButton(
                             onClick = { onTogglePin(item) },
                             modifier = Modifier.size(30.dp)

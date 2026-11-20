@@ -1,10 +1,12 @@
 package com.example.ime
 
+import android.content.ClipDescription
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -15,6 +17,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.view.inputmethod.EditorInfoCompat
+import androidx.core.view.inputmethod.InputConnectionCompat
+import androidx.core.view.inputmethod.InputContentInfoCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -35,7 +40,9 @@ import com.example.data.KeyboardSettings
 import com.example.data.OneHandedMode
 import com.example.data.SettingsRepository
 import com.example.data.ShiftState
+import com.example.data.TextEditCommand
 import com.example.engine.BatteryMonitor
+import com.example.engine.ClipboardSyncManager
 import com.example.engine.DictionaryEngine
 import com.example.engine.VoiceDictationManager
 import com.example.ui.keyboard.HybridKeyboardActions
@@ -51,7 +58,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Real system-wide Android InputMethodService for Hybrid Keyboard.
- * Supports Samsung-style layout + Gboard glide/voice + Android 17 edge-to-edge IME insets.
+ * Supports Samsung-style layout + Gboard glide/voice + Screenshot/Image Clipboard
+ * commitContent + 4-way Text Editing + Android 17 edge-to-edge IME insets.
  */
 class HybridInputMethodService :
     InputMethodService(),
@@ -67,6 +75,7 @@ class HybridInputMethodService :
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var dataRepository: HybridDataRepository
     private lateinit var voiceManager: VoiceDictationManager
+    private lateinit var clipboardSync: ClipboardSyncManager
 
     private val currentWordFlow = MutableStateFlow("")
     private val previousWordFlow = MutableStateFlow("")
@@ -90,6 +99,8 @@ class HybridInputMethodService :
         settingsRepository = SettingsRepository(applicationContext)
         dataRepository = HybridDataRepository(HybridDatabase.getInstance(applicationContext))
         voiceManager = VoiceDictationManager(applicationContext)
+        clipboardSync = ClipboardSyncManager(applicationContext, dataRepository, serviceScope)
+        clipboardSync.startObserving()
 
         serviceScope.launch {
             dataRepository.ensureDefaultsSeeded()
@@ -116,6 +127,7 @@ class HybridInputMethodService :
                     (battery.levelPercent <= 20 || battery.isPowerSaveMode))
             val effectiveSettings = settings.copy(ecoBatteryMode = effectiveEco)
             currentSettings = effectiveSettings
+            clipboardSync.setAutoCaptureEnabled(effectiveSettings.autoCaptureClipboard)
             effectiveSettings to DictionaryEngine.suggest(
                 currentWord = word,
                 previousWord = prev,
@@ -162,8 +174,20 @@ class HybridInputMethodService :
                                     replaceCurrentWordInIc(word)
                                 }
 
+                                override fun onCommitImageEntry(entry: ClipboardEntryEntity) {
+                                    commitImageToTargetApp(entry)
+                                }
+
                                 override fun onBackspace(count: Int) {
                                     deleteFromIc(count)
+                                }
+
+                                override fun onDeletePreviousWord() {
+                                    deletePreviousWordInIc()
+                                }
+
+                                override fun onDoubleSpacePeriod() {
+                                    applyDoubleSpacePeriodInIc()
                                 }
 
                                 override fun onEnter() {
@@ -172,6 +196,14 @@ class HybridInputMethodService :
 
                                 override fun onMoveCursor(delta: Int) {
                                     moveCursorInIc(delta)
+                                }
+
+                                override fun onTextEditCommand(command: TextEditCommand) {
+                                    handleTextEditCommandInIc(command)
+                                }
+
+                                override fun onSyncSystemClipboard() {
+                                    clipboardSync.captureCurrentSystemClip()
                                 }
 
                                 override fun onMicClick() {
@@ -206,6 +238,14 @@ class HybridInputMethodService :
                                             val all = OneHandedMode.entries
                                             val next = all[(all.indexOf(cur.oneHandedMode) + 1) % all.size]
                                             cur.copy(oneHandedMode = next)
+                                        }
+                                    }
+                                }
+
+                                override fun onToggleFloatingMode() {
+                                    serviceScope.launch {
+                                        settingsRepository.updateSettings { cur ->
+                                            cur.copy(floatingMode = !cur.floatingMode)
                                         }
                                     }
                                 }
@@ -248,6 +288,9 @@ class HybridInputMethodService :
         super.onStartInputView(info, restarting)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        if (currentSettings.autoCaptureClipboard) {
+            clipboardSync.captureCurrentSystemClip()
+        }
         refreshWordTracking()
         val ic = currentInputConnection
         val before = ic?.getTextBeforeCursor(2, 0)?.toString().orEmpty()
@@ -268,6 +311,7 @@ class HybridInputMethodService :
     }
 
     override fun onDestroy() {
+        clipboardSync.stopObserving()
         voiceManager.stopListening()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         store.clear()
@@ -282,6 +326,57 @@ class HybridInputMethodService :
         if (currentSettings.autoCapitalize && (text.endsWith(". ") || text.endsWith("! ") || text.endsWith("? "))) {
             shiftState = ShiftState.SINGLE
         }
+    }
+
+    private fun commitImageToTargetApp(entry: ClipboardEntryEntity) {
+        val ic = currentInputConnection
+        val editorInfo = currentInputEditorInfo
+        val contentUri = ClipboardSyncManager.getShareableUri(applicationContext, entry)
+        if (contentUri == null) {
+            Toast.makeText(applicationContext, "Screenshot file unavailable", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val mime = entry.mimeType ?: "image/png"
+        val supportedMimes = editorInfo?.let { EditorInfoCompat.getContentMimeTypes(it) } ?: emptyArray()
+        val targetAcceptsImage = supportedMimes.any {
+            ClipDescription.compareMimeTypes(mime, it) || it == "image/*" || it == "*/*"
+        }
+
+        if (ic != null && editorInfo != null && targetAcceptsImage) {
+            val targetPackage = editorInfo.packageName
+            if (!targetPackage.isNullOrBlank()) {
+                runCatching {
+                    grantUriPermission(
+                        targetPackage,
+                        contentUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+            val description = ClipDescription(entry.content, arrayOf(mime))
+            val contentInfo = InputContentInfoCompat(contentUri, description, null)
+            val committed = runCatching {
+                InputConnectionCompat.commitContent(
+                    ic,
+                    editorInfo,
+                    contentInfo,
+                    InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+                    null
+                )
+            }.getOrDefault(false)
+
+            if (committed) return
+        }
+
+        // Fallback: place image URI on system clipboard so user can paste or share anywhere
+        clipboardSync.copyImageEntryToSystemClipboard(entry)
+        ic?.performContextMenuAction(android.R.id.paste)
+        Toast.makeText(
+            applicationContext,
+            "Image copied to system clipboard (this text box only accepts plain text)",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun replaceCurrentWordInIc(word: String) {
@@ -302,6 +397,32 @@ class HybridInputMethodService :
             ic.commitText("", 1)
         } else {
             ic.deleteSurroundingText(count, 0)
+        }
+        refreshWordTracking()
+    }
+
+    private fun deletePreviousWordInIc() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(64, 0)?.toString().orEmpty()
+        if (before.isEmpty()) return
+        var idx = before.length
+        while (idx > 0 && before[idx - 1].isWhitespace()) idx--
+        while (idx > 0 && !before[idx - 1].isWhitespace()) idx--
+        val deleteLen = before.length - idx
+        if (deleteLen > 0) {
+            ic.deleteSurroundingText(deleteLen, 0)
+            refreshWordTracking()
+        }
+    }
+
+    private fun applyDoubleSpacePeriodInIc() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(3, 0)?.toString().orEmpty()
+        if (before.endsWith(" ") && before.length >= 2 && before[before.length - 2].isLetterOrDigit()) {
+            ic.deleteSurroundingText(1, 0)
+            ic.commitText(". ", 1)
+        } else {
+            ic.commitText(" ", 1)
         }
         refreshWordTracking()
     }
@@ -328,6 +449,28 @@ class HybridInputMethodService :
         repeat(kotlin.math.abs(delta).coerceAtMost(5)) {
             ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
             ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        }
+        refreshWordTracking()
+    }
+
+    private fun handleTextEditCommandInIc(command: TextEditCommand) {
+        val ic = currentInputConnection ?: return
+        fun sendKey(code: Int) {
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+            ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        }
+        when (command) {
+            TextEditCommand.MOVE_LEFT -> sendKey(KeyEvent.KEYCODE_DPAD_LEFT)
+            TextEditCommand.MOVE_RIGHT -> sendKey(KeyEvent.KEYCODE_DPAD_RIGHT)
+            TextEditCommand.MOVE_UP -> sendKey(KeyEvent.KEYCODE_DPAD_UP)
+            TextEditCommand.MOVE_DOWN -> sendKey(KeyEvent.KEYCODE_DPAD_DOWN)
+            TextEditCommand.JUMP_START -> sendKey(KeyEvent.KEYCODE_MOVE_HOME)
+            TextEditCommand.JUMP_END -> sendKey(KeyEvent.KEYCODE_MOVE_END)
+            TextEditCommand.SELECT_ALL -> ic.performContextMenuAction(android.R.id.selectAll)
+            TextEditCommand.CUT -> ic.performContextMenuAction(android.R.id.cut)
+            TextEditCommand.COPY -> ic.performContextMenuAction(android.R.id.copy)
+            TextEditCommand.PASTE -> ic.performContextMenuAction(android.R.id.paste)
+            TextEditCommand.UNDO -> ic.performContextMenuAction(android.R.id.undo)
         }
         refreshWordTracking()
     }

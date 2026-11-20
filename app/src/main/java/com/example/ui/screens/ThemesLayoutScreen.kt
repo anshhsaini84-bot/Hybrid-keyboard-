@@ -257,6 +257,30 @@ fun ThemesLayoutScreen(
                     onCheckedChange = viewModel::toggleSoftMicVisible
                 )
                 SettingToggleRow(
+                    title = "Auto-Capture Screenshots & Clipboard",
+                    subtitle = "Save copied text and screenshots automatically to Hybrid Clipboard",
+                    checked = settings.autoCaptureClipboard,
+                    onCheckedChange = viewModel::toggleAutoCaptureClipboard
+                )
+                SettingToggleRow(
+                    title = "Floating Keyboard Mode",
+                    subtitle = "Compact rounded floating deck with drag pill",
+                    checked = settings.floatingMode,
+                    onCheckedChange = { viewModel.toggleFloatingMode(it) }
+                )
+                SettingToggleRow(
+                    title = "Double-Space Period (. )",
+                    subtitle = "Tap Space twice to insert period and start next sentence",
+                    checked = settings.doubleSpacePeriod,
+                    onCheckedChange = viewModel::toggleDoubleSpacePeriod
+                )
+                SettingToggleRow(
+                    title = "Swipe Backspace to Delete Word",
+                    subtitle = "Slide left from Backspace key to erase whole words fast",
+                    checked = settings.swipeBackspaceDeleteWord,
+                    onCheckedChange = viewModel::toggleSwipeBackspaceWord
+                )
+                SettingToggleRow(
                     title = "Auto-Capitalization",
                     subtitle = "Capitalize first letter of each sentence",
                     checked = settings.autoCapitalize,
