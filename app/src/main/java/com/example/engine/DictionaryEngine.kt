@@ -192,20 +192,22 @@ object DictionaryEngine {
         for (word in candidates) {
             if (word.length < 2) continue
             if (word.first() != firstChar) continue
+            val wordCollapsed = collapseConsecutive(word)
             var score = 0
             if (word.last() == lastChar) score += 40
-            if (isSubsequence(word, collapsed)) {
-                score += 60 - abs(collapsed.length - word.length) * 4
+            if (isSubsequence(wordCollapsed, collapsed)) {
+                score += 65 - abs(collapsed.length - wordCollapsed.length) * 5
+                if (wordCollapsed == collapsed) score += 30
             } else {
                 // Count ordered character hits
                 var wi = 0
                 for (ch in collapsed) {
-                    if (wi < word.length && word[wi] == ch) {
+                    if (wi < wordCollapsed.length && wordCollapsed[wi] == ch) {
                         wi++
                         score += 10
                     }
                 }
-                score -= abs(word.length - wi) * 12
+                score -= abs(wordCollapsed.length - wi) * 12
             }
             if (score > bestScore && score >= 45) {
                 bestScore = score
@@ -213,6 +215,12 @@ object DictionaryEngine {
             }
         }
         return bestWord
+    }
+
+    private fun collapseConsecutive(input: String): String = buildString(input.length) {
+        for (ch in input) {
+            if (isEmpty() || last() != ch) append(ch)
+        }
     }
 
     private fun isSubsequence(word: String, path: String): Boolean {
