@@ -7,6 +7,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -18,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +29,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
@@ -34,7 +38,9 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardReturn
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EmojiEmotions
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.rounded.SpaceBar
 import androidx.compose.material3.Icon
@@ -74,13 +80,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import com.example.data.ClipboardEntryEntity
-import com.example.data.HybridThemeStyle
 import com.example.data.KeyboardLanguage
 import com.example.data.KeyboardPanel
 import com.example.data.KeyboardSettings
 import com.example.data.OneHandedMode
+import com.example.data.ResolvedKeyboardColors
 import com.example.data.ShiftState
 import com.example.data.TextEditCommand
+import com.example.data.ToolbarTool
+import com.example.data.resolveKeyboardColors
 import com.example.engine.DictionaryEngine
 import com.example.engine.KeySpec
 import com.example.engine.KeyType
@@ -93,6 +101,7 @@ import kotlin.math.roundToInt
 
 interface HybridKeyboardActions {
     fun onCommitText(text: String)
+    fun onCommitTextEntry(entry: ClipboardEntryEntity)
     fun onCommitWordReplacement(word: String)
     fun onCommitImageEntry(entry: ClipboardEntryEntity)
     fun onBackspace(count: Int = 1)
@@ -106,9 +115,12 @@ interface HybridKeyboardActions {
     fun onStopMic()
     fun onDismissMicError()
     fun onCycleLanguage()
+    fun onSelectLanguage(language: KeyboardLanguage)
     fun onToggleOneHanded()
     fun onToggleFloatingMode()
     fun onToggleEcoMode()
+    fun onUpdateHeightScale(scale: Float)
+    fun onUpdatePinnedTools(tools: List<ToolbarTool>)
     fun onToggleClipboardPin(entry: ClipboardEntryEntity)
     fun onDeleteClipboardEntry(id: Int)
     fun onOpenSettings()
@@ -128,8 +140,9 @@ fun HybridKeyboardView(
     showSettingsIcon: Boolean = true
 ) {
     val context = LocalContext.current
-    val theme = settings.effectiveTheme
+    val theme = resolveKeyboardColors(settings)
     var activePanel by remember { mutableStateOf(KeyboardPanel.ALPHA) }
+    var showLanguageSwitcher by remember { mutableStateOf(false) }
     var lastShiftTapMs by remember { mutableLongStateOf(0L) }
     var lastSpaceTapMs by remember { mutableLongStateOf(0L) }
     var pressedKeyPreview by remember { mutableStateOf<Pair<KeySpec, Offset>?>(null) }
@@ -155,9 +168,16 @@ fun HybridKeyboardView(
 
     fun triggerFeedback(isSpecial: Boolean = false) {
         if (settings.hapticFeedbackEnabled && vibrator?.hasVibrator() == true) {
-            val ms = if (settings.ecoBatteryMode) 8L else if (isSpecial) 18L else 12L
+            val baseMs = settings.hapticStrengthMs.coerceIn(5, 30).toLong()
+            val ms = when {
+                settings.ecoBatteryMode -> (baseMs / 2L).coerceAtLeast(5L)
+                isSpecial -> (baseMs + 4L).coerceAtMost(32L)
+                else -> baseMs
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
+                // Lighter, crisp haptic amplitude scaled by strength setting
+                val amp = (55 + (settings.hapticStrengthMs * 5)).coerceIn(60, 220)
+                vibrator.vibrate(VibrationEffect.createOneShot(ms, amp))
             } else {
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(ms)
@@ -168,12 +188,57 @@ fun HybridKeyboardView(
         }
     }
 
+    fun handleToolbarTool(tool: ToolbarTool) {
+        triggerFeedback(true)
+        showLanguageSwitcher = false
+        when (tool) {
+            ToolbarTool.CLIPBOARD -> {
+                if (activePanel == KeyboardPanel.CLIPBOARD) {
+                    activePanel = KeyboardPanel.ALPHA
+                } else {
+                    actions.onSyncSystemClipboard()
+                    activePanel = KeyboardPanel.CLIPBOARD
+                }
+            }
+            ToolbarTool.TEXT_EDIT -> {
+                activePanel = if (activePanel == KeyboardPanel.TEXT_EDIT) KeyboardPanel.ALPHA else KeyboardPanel.TEXT_EDIT
+            }
+            ToolbarTool.TRANSLATE -> {
+                activePanel = if (activePanel == KeyboardPanel.TRANSLATE) KeyboardPanel.ALPHA else KeyboardPanel.TRANSLATE
+            }
+            ToolbarTool.RESIZE -> {
+                activePanel = if (activePanel == KeyboardPanel.RESIZE) KeyboardPanel.ALPHA else KeyboardPanel.RESIZE
+            }
+            ToolbarTool.EMOJI -> {
+                activePanel = if (activePanel == KeyboardPanel.EMOJI) KeyboardPanel.ALPHA else KeyboardPanel.EMOJI
+            }
+            ToolbarTool.ONE_HANDED -> {
+                actions.onToggleOneHanded()
+                activePanel = KeyboardPanel.ALPHA
+            }
+            ToolbarTool.FLOATING -> {
+                actions.onToggleFloatingMode()
+                activePanel = KeyboardPanel.ALPHA
+            }
+            ToolbarTool.LANGUAGE -> {
+                showLanguageSwitcher = !showLanguageSwitcher
+                activePanel = KeyboardPanel.ALPHA
+            }
+            ToolbarTool.ECO -> {
+                actions.onToggleEcoMode()
+            }
+            ToolbarTool.SETTINGS -> {
+                if (showSettingsIcon) actions.onOpenSettings()
+            }
+        }
+    }
+
     fun handleKeyPress(key: KeySpec) {
         triggerFeedback(key.type != KeyType.CHARACTER)
         when (key.type) {
             KeyType.CHARACTER -> {
                 lastSpaceTapMs = 0L
-                val out = if (shiftState != ShiftState.OFF && settings.language != KeyboardLanguage.HINDI_DEVANAGARI) {
+                val out = if (shiftState != ShiftState.OFF && KeyboardLayouts.usesCaseShift(settings.language)) {
                     key.primary.uppercase()
                 } else {
                     key.primary
@@ -260,7 +325,6 @@ fun HybridKeyboardView(
 
     Column(modifier = containerModifier) {
         if (settings.floatingMode) {
-            // Samsung/Gboard Floating Keyboard Drag Pill
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -290,34 +354,20 @@ fun HybridKeyboardView(
                 triggerFeedback(true)
                 actions.onCommitWordReplacement(suggestion)
             },
-            onPanelToggle = { panel ->
+            onToolClick = ::handleToolbarTool,
+            onToggleMoreTools = {
                 triggerFeedback(true)
-                if (panel == KeyboardPanel.CLIPBOARD) {
-                    actions.onSyncSystemClipboard()
+                showLanguageSwitcher = false
+                activePanel = if (activePanel == KeyboardPanel.MORE_TOOLS) {
+                    KeyboardPanel.ALPHA
+                } else {
+                    KeyboardPanel.MORE_TOOLS
                 }
-                activePanel = panel
             },
             onMicClick = {
                 triggerFeedback(true)
                 actions.onMicClick()
-            },
-            onCycleLanguage = {
-                triggerFeedback(true)
-                actions.onCycleLanguage()
-            },
-            onToggleOneHanded = {
-                triggerFeedback(true)
-                actions.onToggleOneHanded()
-            },
-            onToggleFloating = {
-                triggerFeedback(true)
-                actions.onToggleFloatingMode()
-            },
-            onToggleEcoMode = {
-                triggerFeedback(true)
-                actions.onToggleEcoMode()
-            },
-            onOpenSettings = if (showSettingsIcon) ({ actions.onOpenSettings() }) else null
+            }
         )
 
         VoiceSoftMicBanner(
@@ -329,6 +379,83 @@ fun HybridKeyboardView(
             onStopMic = actions::onStopMic,
             onDismissError = actions::onDismissMicError
         )
+
+        // Spacebar Long-Press Quick Language Switcher + Side Mic Strip
+        AnimatedVisibility(visible = showLanguageSwitcher) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.specialKeyColor)
+                    .border(0.5.dp, theme.accentColor.copy(alpha = 0.4f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    KeyboardLanguage.entries.forEach { lang ->
+                        val selected = lang == settings.language
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selected) theme.accentColor else theme.keyColor,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    triggerFeedback(true)
+                                    actions.onSelectLanguage(lang)
+                                    showLanguageSwitcher = false
+                                }
+                                .testTag("space_lang_${lang.name.lowercase()}")
+                        ) {
+                            Text(
+                                text = lang.nativeLabel,
+                                color = if (selected) (if (theme.isLight) Color.White else Color.Black) else theme.keyTextColor,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(theme.accentColor.copy(alpha = 0.16f))
+                        .clickable {
+                            triggerFeedback(true)
+                            showLanguageSwitcher = false
+                            actions.onMicClick()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Mic,
+                        contentDescription = "Voice Mic",
+                        tint = theme.accentColor,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .clickable { showLanguageSwitcher = false },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Close Language Strip",
+                        tint = theme.hintTextColor,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+        }
 
         // Long-press alternate key chooser bar
         if (alternatePickerKey != null && alternatePickerKey!!.alternates.isNotEmpty()) {
@@ -376,350 +503,379 @@ fun HybridKeyboardView(
             },
             label = "keyboard_panel_transition"
         ) { panel ->
-        when (panel) {
-            KeyboardPanel.EMOJI -> {
-                EmojiKeyboardPanel(
-                    theme = theme,
-                    onEmojiClick = { emoji ->
-                        triggerFeedback()
-                        actions.onCommitText(emoji)
-                    },
-                    onBackspace = {
-                        triggerFeedback(true)
-                        actions.onBackspace(1)
-                    },
-                    onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
-                )
-            }
-            KeyboardPanel.CLIPBOARD -> {
-                ClipboardKeyboardPanel(
-                    theme = theme,
-                    entries = clipboardEntries,
-                    onPasteTextEntry = { text ->
-                        triggerFeedback(true)
-                        actions.onCommitText(text)
-                        activePanel = KeyboardPanel.ALPHA
-                    },
-                    onPasteImageEntry = { entry ->
-                        triggerFeedback(true)
-                        actions.onCommitImageEntry(entry)
-                        activePanel = KeyboardPanel.ALPHA
-                    },
-                    onSyncSystemClipboard = {
-                        triggerFeedback(true)
-                        actions.onSyncSystemClipboard()
-                    },
-                    onTogglePin = actions::onToggleClipboardPin,
-                    onDeleteEntry = actions::onDeleteClipboardEntry,
-                    onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
-                )
-            }
-            KeyboardPanel.TEXT_EDIT -> {
-                TextEditKeyboardPanel(
-                    theme = theme,
-                    onCommand = { cmd ->
-                        triggerFeedback(true)
-                        actions.onTextEditCommand(cmd)
-                    },
-                    onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
-                )
-            }
-            KeyboardPanel.TRANSLATE -> {
-                TranslateKeyboardPanel(
-                    theme = theme,
-                    onInsertTranslation = { translated ->
-                        triggerFeedback(true)
-                        actions.onCommitText(translated)
-                        activePanel = KeyboardPanel.ALPHA
-                    },
-                    onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
-                )
-            }
-            KeyboardPanel.ALPHA, KeyboardPanel.SYMBOLS_1, KeyboardPanel.SYMBOLS_2 -> {
-                val scale = if (settings.floatingMode) settings.heightScale * 0.90f else settings.heightScale
-                val baseKeyHeight = (46f * scale).dp
-                val rows = when (panel) {
-                    KeyboardPanel.ALPHA -> KeyboardLayouts.rowsForAlpha(
-                        language = settings.language,
-                        isHindiShifted = shiftState != ShiftState.OFF
+            when (panel) {
+                KeyboardPanel.MORE_TOOLS -> {
+                    MoreToolsDrawerPanel(
+                        theme = theme,
+                        settings = settings,
+                        activePanel = activePanel,
+                        onToolClick = ::handleToolbarTool,
+                        onUpdatePinnedTools = { updated ->
+                            triggerFeedback(true)
+                            actions.onUpdatePinnedTools(updated)
+                        },
+                        onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
                     )
-                    KeyboardPanel.SYMBOLS_1 -> KeyboardLayouts.symbolsPage1
-                    KeyboardPanel.SYMBOLS_2 -> KeyboardLayouts.symbolsPage2
-                    else -> KeyboardLayouts.qwertyRows
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (settings.oneHandedMode == OneHandedMode.RIGHT) {
-                        OneHandedSideRail(
-                            theme = theme,
-                            isLeftDock = true,
-                            onExpand = actions::onToggleOneHanded,
-                            onSwitchSide = actions::onToggleOneHanded
+                KeyboardPanel.RESIZE -> {
+                    ResizeKeyboardPanel(
+                        theme = theme,
+                        heightScale = settings.heightScale,
+                        onHeightScaleChange = actions::onUpdateHeightScale,
+                        onDone = {
+                            triggerFeedback(true)
+                            activePanel = KeyboardPanel.ALPHA
+                        }
+                    )
+                }
+                KeyboardPanel.EMOJI -> {
+                    EmojiKeyboardPanel(
+                        theme = theme,
+                        onEmojiClick = { emoji ->
+                            triggerFeedback()
+                            actions.onCommitText(emoji)
+                        },
+                        onBackspace = {
+                            triggerFeedback(true)
+                            actions.onBackspace(1)
+                        },
+                        onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
+                    )
+                }
+                KeyboardPanel.CLIPBOARD -> {
+                    ClipboardKeyboardPanel(
+                        theme = theme,
+                        entries = clipboardEntries,
+                        onPasteTextEntry = { entry ->
+                            triggerFeedback(true)
+                            actions.onCommitTextEntry(entry)
+                            activePanel = KeyboardPanel.ALPHA
+                        },
+                        onPasteImageEntry = { entry ->
+                            triggerFeedback(true)
+                            actions.onCommitImageEntry(entry)
+                            activePanel = KeyboardPanel.ALPHA
+                        },
+                        onSyncSystemClipboard = {
+                            triggerFeedback(true)
+                            actions.onSyncSystemClipboard()
+                        },
+                        onTogglePin = actions::onToggleClipboardPin,
+                        onDeleteEntry = actions::onDeleteClipboardEntry,
+                        onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
+                    )
+                }
+                KeyboardPanel.TEXT_EDIT -> {
+                    TextEditKeyboardPanel(
+                        theme = theme,
+                        onCommand = { cmd ->
+                            triggerFeedback(true)
+                            actions.onTextEditCommand(cmd)
+                        },
+                        onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
+                    )
+                }
+                KeyboardPanel.TRANSLATE -> {
+                    TranslateKeyboardPanel(
+                        theme = theme,
+                        onInsertTranslation = { translated ->
+                            triggerFeedback(true)
+                            actions.onCommitText(translated)
+                            activePanel = KeyboardPanel.ALPHA
+                        },
+                        onBackToAlpha = { activePanel = KeyboardPanel.ALPHA }
+                    )
+                }
+                KeyboardPanel.ALPHA, KeyboardPanel.SYMBOLS_1, KeyboardPanel.SYMBOLS_2 -> {
+                    val scale = if (settings.floatingMode) settings.heightScale * 0.90f else settings.heightScale
+                    val baseKeyHeight = (46f * scale).dp
+                    val rows = when (panel) {
+                        KeyboardPanel.ALPHA -> KeyboardLayouts.rowsForAlpha(
+                            language = settings.language,
+                            isShifted = shiftState != ShiftState.OFF
                         )
+                        KeyboardPanel.SYMBOLS_1 -> KeyboardLayouts.symbolsPage1
+                        KeyboardPanel.SYMBOLS_2 -> KeyboardLayouts.symbolsPage2
+                        else -> KeyboardLayouts.qwertyRows
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 4.dp, vertical = 4.dp)
-                            .then(
-                                if (settings.glideTypingEnabled && panel == KeyboardPanel.ALPHA &&
-                                    settings.language != KeyboardLanguage.HINDI_DEVANAGARI
-                                ) {
-                                    Modifier.pointerInput(settings.language, shiftState, settings.ecoBatteryMode) {
-                                        detectDragGestures(
-                                            onDragStart = { startOffset ->
-                                                val hit = keyBounds.entries.firstOrNull {
-                                                    it.value.contains(startOffset) && it.key.length == 1
-                                                }
-                                                if (hit != null) {
-                                                    isGliding = true
-                                                    glidePoints.clear()
-                                                    glidedKeyLabels.clear()
-                                                    glidePoints.add(startOffset)
-                                                    glidedKeyLabels.add(hit.key)
-                                                }
-                                            },
-                                            onDrag = { change, _ ->
-                                                if (isGliding) {
-                                                    val pos = change.position
-                                                    glidePoints.add(pos)
-                                                    if (glidePoints.size > 48) {
-                                                        glidePoints.removeAt(0)
-                                                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (settings.oneHandedMode == OneHandedMode.RIGHT) {
+                            OneHandedSideRail(
+                                theme = theme,
+                                isLeftDock = true,
+                                onExpand = actions::onToggleOneHanded,
+                                onSwitchSide = actions::onToggleOneHanded
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp, vertical = 4.dp)
+                                .then(
+                                    if (settings.glideTypingEnabled && panel == KeyboardPanel.ALPHA &&
+                                        KeyboardLayouts.supportsGlide(settings.language)
+                                    ) {
+                                        Modifier.pointerInput(settings.language, shiftState, settings.ecoBatteryMode) {
+                                            detectDragGestures(
+                                                onDragStart = { startOffset ->
                                                     val hit = keyBounds.entries.firstOrNull {
-                                                        it.value.contains(pos) && it.key.length == 1
+                                                        it.value.contains(startOffset) && it.key.length == 1
                                                     }
-                                                    if (hit != null && glidedKeyLabels.lastOrNull() != hit.key) {
+                                                    if (hit != null) {
+                                                        isGliding = true
+                                                        glidePoints.clear()
+                                                        glidedKeyLabels.clear()
+                                                        glidePoints.add(startOffset)
                                                         glidedKeyLabels.add(hit.key)
                                                     }
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                if (isGliding && glidedKeyLabels.size >= 2) {
-                                                    val decoded = DictionaryEngine.decodeGlideSequence(
-                                                        visitedKeys = glidedKeyLabels.toList(),
-                                                        language = settings.language
-                                                    )
-                                                    if (decoded != null) {
-                                                        triggerFeedback(true)
-                                                        val formatted = if (shiftState != ShiftState.OFF) {
-                                                            decoded.replaceFirstChar { it.uppercase() }
-                                                        } else {
-                                                            decoded
+                                                },
+                                                onDrag = { change, _ ->
+                                                    if (isGliding) {
+                                                        val pos = change.position
+                                                        glidePoints.add(pos)
+                                                        if (glidePoints.size > 48) {
+                                                            glidePoints.removeAt(0)
                                                         }
-                                                        actions.onCommitText("$formatted ")
-                                                        if (shiftState == ShiftState.SINGLE) {
-                                                            onShiftStateChange(ShiftState.OFF)
+                                                        val hit = keyBounds.entries.firstOrNull {
+                                                            it.value.contains(pos) && it.key.length == 1
+                                                        }
+                                                        if (hit != null && glidedKeyLabels.lastOrNull() != hit.key) {
+                                                            glidedKeyLabels.add(hit.key)
                                                         }
                                                     }
+                                                },
+                                                onDragEnd = {
+                                                    if (isGliding && glidedKeyLabels.size >= 2) {
+                                                        val decoded = DictionaryEngine.decodeGlideSequence(
+                                                            visitedKeys = glidedKeyLabels.toList(),
+                                                            language = settings.language
+                                                        )
+                                                        if (decoded != null) {
+                                                            triggerFeedback(true)
+                                                            val formatted = if (shiftState != ShiftState.OFF) {
+                                                                decoded.replaceFirstChar { it.uppercase() }
+                                                            } else {
+                                                                decoded
+                                                            }
+                                                            actions.onCommitText("$formatted ")
+                                                            if (shiftState == ShiftState.SINGLE) {
+                                                                onShiftStateChange(ShiftState.OFF)
+                                                            }
+                                                        }
+                                                    }
+                                                    isGliding = false
+                                                    glidePoints.clear()
+                                                    glidedKeyLabels.clear()
+                                                },
+                                                onDragCancel = {
+                                                    isGliding = false
+                                                    glidePoints.clear()
+                                                    glidedKeyLabels.clear()
                                                 }
-                                                isGliding = false
-                                                glidePoints.clear()
-                                                glidedKeyLabels.clear()
-                                            },
-                                            onDragCancel = {
-                                                isGliding = false
-                                                glidePoints.clear()
-                                                glidedKeyLabels.clear()
-                                            }
-                                        )
+                                            )
+                                        }
+                                    } else {
+                                        Modifier
                                     }
-                                } else {
-                                    Modifier
-                                }
-                            )
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(5.dp),
-                            modifier = Modifier.fillMaxWidth()
+                                )
                         ) {
-                            // Dedicated Samsung Number Row
-                            if (settings.showNumberRow && panel == KeyboardPanel.ALPHA) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    KeyboardLayouts.numberRow.forEach { numKey ->
-                                        KeyboardKeyCap(
-                                            keySpec = numKey,
-                                            theme = theme,
-                                            shiftState = ShiftState.OFF,
-                                            language = settings.language,
-                                            ecoMode = settings.ecoBatteryMode,
-                                            spacebarCursorEnabled = false,
-                                            swipeBackspaceWordEnabled = false,
-                                            modifier = Modifier
-                                                .weight(numKey.weight)
-                                                .height((baseKeyHeight.value * 0.84f).dp),
-                                            onTap = {
-                                                alternatePickerKey = null
-                                                handleKeyPress(numKey)
-                                            },
-                                            onLongPress = {
-                                                if (numKey.alternates.isNotEmpty()) {
-                                                    triggerFeedback(true)
-                                                    alternatePickerKey = numKey
-                                                }
-                                            },
-                                            onBackspaceRepeat = {},
-                                            onSwipeDeleteWord = {},
-                                            onSpaceCursorMove = {},
-                                            onPressPreviewChanged = { offset ->
-                                                pressedKeyPreview = offset?.let { numKey to it }
-                                            },
-                                            onBoundsMeasured = {}
-                                        )
-                                    }
-                                }
-                            }
-
-                            rows.forEachIndexed { rowIdx, rowKeys ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(
-                                            horizontal = if (rowIdx == 1 && rowKeys.size == 9) 14.dp else 0.dp
-                                        ),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    rowKeys.forEach { key ->
-                                        KeyboardKeyCap(
-                                            keySpec = key,
-                                            theme = theme,
-                                            shiftState = shiftState,
-                                            language = settings.language,
-                                            ecoMode = settings.ecoBatteryMode,
-                                            spacebarCursorEnabled = settings.spacebarCursorEnabled,
-                                            swipeBackspaceWordEnabled = settings.swipeBackspaceDeleteWord,
-                                            modifier = Modifier
-                                                .weight(key.weight)
-                                                .height(baseKeyHeight),
-                                            onTap = {
-                                                alternatePickerKey = null
-                                                handleKeyPress(key)
-                                            },
-                                            onLongPress = {
-                                                if (key.alternates.isNotEmpty()) {
-                                                    triggerFeedback(true)
-                                                    alternatePickerKey = key
-                                                } else if (key.type == KeyType.EMOJI_TRIGGER) {
-                                                    triggerFeedback(true)
-                                                    actions.onMicClick()
-                                                }
-                                            },
-                                            onBackspaceRepeat = {
-                                                triggerFeedback(false)
-                                                actions.onBackspace(1)
-                                            },
-                                            onSwipeDeleteWord = {
-                                                triggerFeedback(true)
-                                                actions.onDeletePreviousWord()
-                                            },
-                                            onSpaceCursorMove = { delta ->
-                                                actions.onMoveCursor(delta)
-                                            },
-                                            onPressPreviewChanged = { offset ->
-                                                pressedKeyPreview = if (offset != null && key.type == KeyType.CHARACTER) {
-                                                    key to offset
-                                                } else {
-                                                    null
-                                                }
-                                            },
-                                            onBoundsMeasured = { rect ->
-                                                if (key.type == KeyType.CHARACTER && key.primary.length == 1) {
-                                                    keyBounds[key.primary] = rect
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Glowing Glide Typing Trail Canvas
-                        if (isGliding && glidePoints.size >= 2) {
-                            Canvas(modifier = Modifier.matchParentSize()) {
-                                val path = Path().apply {
-                                    moveTo(glidePoints.first().x, glidePoints.first().y)
-                                    for (i in 1 until glidePoints.size) {
-                                        lineTo(glidePoints[i].x, glidePoints[i].y)
-                                    }
-                                }
-                                val strokeWidth = if (settings.ecoBatteryMode) 4f else 10f
-                                drawPath(
-                                    path = path,
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            theme.accentColor.copy(alpha = 0.35f),
-                                            theme.accentColor
-                                        )
-                                    ),
-                                    style = Stroke(
-                                        width = strokeWidth,
-                                        cap = StrokeCap.Round,
-                                        join = StrokeJoin.Round
-                                    )
-                                )
-                            }
-                        }
-
-                        // Keypress popup bubble (hidden in Eco Mode for lowest draw cost)
-                        val preview = pressedKeyPreview
-                        if (preview != null && !settings.ecoBatteryMode && !isGliding) {
-                            val (key, pos) = preview
-                            val label = if (shiftState != ShiftState.OFF && settings.language != KeyboardLanguage.HINDI_DEVANAGARI) {
-                                key.primary.uppercase()
-                            } else {
-                                key.primary
-                            }
-                            Popup(
-                                alignment = Alignment.TopStart,
-                                offset = IntOffset(
-                                    x = (pos.x - 18f).roundToInt(),
-                                    y = (pos.y - 140f).roundToInt()
-                                )
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = theme.accentColor,
-                                    shadowElevation = 6.dp,
-                                    modifier = Modifier.size(width = 46.dp, height = 54.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = label,
-                                            color = Color.Black,
-                                            fontSize = 24.sp,
-                                            fontWeight = FontWeight.Bold
+                                if (settings.showNumberRow && panel == KeyboardPanel.ALPHA) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        KeyboardLayouts.numberRow.forEach { numKey ->
+                                            KeyboardKeyCap(
+                                                keySpec = numKey,
+                                                theme = theme,
+                                                shiftState = ShiftState.OFF,
+                                                language = settings.language,
+                                                ecoMode = settings.ecoBatteryMode,
+                                                spacebarCursorEnabled = false,
+                                                swipeBackspaceWordEnabled = false,
+                                                modifier = Modifier
+                                                    .weight(numKey.weight)
+                                                    .height((baseKeyHeight.value * 0.84f).dp),
+                                                onTap = {
+                                                    alternatePickerKey = null
+                                                    handleKeyPress(numKey)
+                                                },
+                                                onLongPress = {
+                                                    if (numKey.alternates.isNotEmpty()) {
+                                                        triggerFeedback(true)
+                                                        alternatePickerKey = numKey
+                                                    }
+                                                },
+                                                onBackspaceRepeat = {},
+                                                onSwipeDeleteWord = {},
+                                                onSpaceCursorMove = {},
+                                                onPressPreviewChanged = { offset ->
+                                                    pressedKeyPreview = offset?.let { numKey to it }
+                                                },
+                                                onBoundsMeasured = {}
+                                            )
+                                        }
+                                    }
+                                }
+
+                                rows.forEachIndexed { rowIdx, rowKeys ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                horizontal = if (rowIdx == 1 && rowKeys.size == 9) 14.dp else 0.dp
+                                            ),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        rowKeys.forEach { key ->
+                                            KeyboardKeyCap(
+                                                keySpec = key,
+                                                theme = theme,
+                                                shiftState = shiftState,
+                                                language = settings.language,
+                                                ecoMode = settings.ecoBatteryMode,
+                                                spacebarCursorEnabled = settings.spacebarCursorEnabled,
+                                                swipeBackspaceWordEnabled = settings.swipeBackspaceDeleteWord,
+                                                modifier = Modifier
+                                                    .weight(key.weight)
+                                                    .height(baseKeyHeight),
+                                                onTap = {
+                                                    alternatePickerKey = null
+                                                    showLanguageSwitcher = false
+                                                    handleKeyPress(key)
+                                                },
+                                                onLongPress = {
+                                                    when {
+                                                        key.type == KeyType.SPACE -> {
+                                                            triggerFeedback(true)
+                                                            showLanguageSwitcher = !showLanguageSwitcher
+                                                        }
+                                                        key.alternates.isNotEmpty() -> {
+                                                            triggerFeedback(true)
+                                                            alternatePickerKey = key
+                                                        }
+                                                        key.type == KeyType.EMOJI_TRIGGER -> {
+                                                            triggerFeedback(true)
+                                                            actions.onMicClick()
+                                                        }
+                                                    }
+                                                },
+                                                onBackspaceRepeat = {
+                                                    triggerFeedback(false)
+                                                    actions.onBackspace(1)
+                                                },
+                                                onSwipeDeleteWord = {
+                                                    triggerFeedback(true)
+                                                    actions.onDeletePreviousWord()
+                                                },
+                                                onSpaceCursorMove = { delta ->
+                                                    actions.onMoveCursor(delta)
+                                                },
+                                                onPressPreviewChanged = { offset ->
+                                                    pressedKeyPreview = if (offset != null && key.type == KeyType.CHARACTER) {
+                                                        key to offset
+                                                    } else {
+                                                        null
+                                                    }
+                                                },
+                                                onBoundsMeasured = { rect ->
+                                                    if (key.type == KeyType.CHARACTER && key.primary.length == 1) {
+                                                        keyBounds[key.primary] = rect
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (isGliding && glidePoints.size >= 2) {
+                                Canvas(modifier = Modifier.matchParentSize()) {
+                                    val path = Path().apply {
+                                        moveTo(glidePoints.first().x, glidePoints.first().y)
+                                        for (i in 1 until glidePoints.size) {
+                                            lineTo(glidePoints[i].x, glidePoints[i].y)
+                                        }
+                                    }
+                                    val strokeWidth = if (settings.ecoBatteryMode) 4f else 10f
+                                    drawPath(
+                                        path = path,
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(
+                                                theme.accentColor.copy(alpha = 0.35f),
+                                                theme.accentColor
+                                            )
+                                        ),
+                                        style = Stroke(
+                                            width = strokeWidth,
+                                            cap = StrokeCap.Round,
+                                            join = StrokeJoin.Round
                                         )
+                                    )
+                                }
+                            }
+
+                            val preview = pressedKeyPreview
+                            if (preview != null && !settings.ecoBatteryMode && !isGliding) {
+                                val (key, pos) = preview
+                                val label = if (shiftState != ShiftState.OFF && KeyboardLayouts.usesCaseShift(settings.language)) {
+                                    key.primary.uppercase()
+                                } else {
+                                    key.primary
+                                }
+                                Popup(
+                                    alignment = Alignment.TopStart,
+                                    offset = IntOffset(
+                                        x = (pos.x - 18f).roundToInt(),
+                                        y = (pos.y - 140f).roundToInt()
+                                    )
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = theme.accentColor,
+                                        shadowElevation = 6.dp,
+                                        modifier = Modifier.size(width = 46.dp, height = 54.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = label,
+                                                color = if (theme.isLight) Color.White else Color.Black,
+                                                fontSize = 24.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    if (settings.oneHandedMode == OneHandedMode.LEFT) {
-                        OneHandedSideRail(
-                            theme = theme,
-                            isLeftDock = false,
-                            onExpand = actions::onToggleOneHanded,
-                            onSwitchSide = actions::onToggleOneHanded
-                        )
+                        if (settings.oneHandedMode == OneHandedMode.LEFT) {
+                            OneHandedSideRail(
+                                theme = theme,
+                                isLeftDock = false,
+                                onExpand = actions::onToggleOneHanded,
+                                onSwitchSide = actions::onToggleOneHanded
+                            )
+                        }
                     }
                 }
             }
-        }
         }
     }
 }
 
 @Composable
 private fun OneHandedSideRail(
-    theme: HybridThemeStyle,
+    theme: ResolvedKeyboardColors,
     isLeftDock: Boolean,
     onExpand: () -> Unit,
     onSwitchSide: () -> Unit
@@ -768,7 +924,7 @@ private fun OneHandedSideRail(
 @Composable
 private fun KeyboardKeyCap(
     keySpec: KeySpec,
-    theme: HybridThemeStyle,
+    theme: ResolvedKeyboardColors,
     shiftState: ShiftState,
     language: KeyboardLanguage,
     ecoMode: Boolean,
@@ -801,7 +957,7 @@ private fun KeyboardKeyCap(
         else -> theme.keyColor
     }
     val fgColor = when {
-        isAction -> if (theme == HybridThemeStyle.SAMSUNG_ONE_LIGHT) Color.White else Color(0xFF061018)
+        isAction -> if (theme.isLight) Color.White else Color(0xFF061018)
         keySpec.type == KeyType.SHIFT && shiftState != ShiftState.OFF -> theme.accentColor
         else -> theme.keyTextColor
     }
@@ -901,7 +1057,6 @@ private fun KeyboardKeyCap(
             .testTag("key_${keySpec.id}"),
         contentAlignment = Alignment.Center
     ) {
-        // Samsung-style top-right secondary glyph hint
         if (keySpec.secondary != null && keySpec.type == KeyType.CHARACTER) {
             Text(
                 text = keySpec.secondary,
@@ -960,7 +1115,7 @@ private fun KeyboardKeyCap(
             KeyType.SPACE -> {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.SpaceBar,
@@ -969,17 +1124,19 @@ private fun KeyboardKeyCap(
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = "Hybrid · ${language.code}",
+                        text = "${language.nativeLabel} · Hold",
                         color = theme.hintTextColor,
                         fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
                     )
                 }
             }
             else -> {
-                val displayText = if (shiftState != ShiftState.OFF &&
+                val displayText = if (
                     keySpec.type == KeyType.CHARACTER &&
-                    language != KeyboardLanguage.HINDI_DEVANAGARI
+                    shiftState != ShiftState.OFF &&
+                    KeyboardLayouts.usesCaseShift(language)
                 ) {
                     keySpec.primary.uppercase()
                 } else {
@@ -988,8 +1145,8 @@ private fun KeyboardKeyCap(
                 Text(
                     text = displayText,
                     color = fgColor,
-                    fontSize = if (keySpec.type == KeyType.SYMBOLS_SWITCH || keySpec.type == KeyType.SYMBOLS_PAGE_SWITCH) 12.sp else 17.sp,
-                    fontWeight = FontWeight.Medium
+                    fontSize = if (keySpec.type == KeyType.SYMBOLS_SWITCH || keySpec.type == KeyType.SYMBOLS_PAGE_SWITCH) 12.sp else 19.sp,
+                    fontWeight = if (keySpec.type == KeyType.CHARACTER) FontWeight.Normal else FontWeight.SemiBold
                 )
             }
         }

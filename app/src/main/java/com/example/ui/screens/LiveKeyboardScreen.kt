@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -54,7 +53,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ClipboardEntryEntity
+import com.example.data.KeyboardLanguage
 import com.example.data.TextEditCommand
+import com.example.data.ToolbarTool
 import com.example.engine.ClipboardSyncManager
 import com.example.engine.VoiceDictationState
 import com.example.ui.HybridStudioUiState
@@ -91,7 +92,6 @@ fun LiveKeyboardScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Minimal, crisp header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -105,7 +105,6 @@ fun LiveKeyboardScreen(
                 color = MaterialTheme.colorScheme.onBackground
             )
 
-            // Compact system IME status / setup trigger
             val isDefault = uiState.imeStatus.isSelectedAsDefault
             val isEnabled = uiState.imeStatus.isEnabledInSystem
             Surface(
@@ -156,7 +155,6 @@ fun LiveKeyboardScreen(
             }
         }
 
-        // Clean, spacious live typing canvas
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -172,7 +170,6 @@ fun LiveKeyboardScreen(
                 )
                 .padding(16.dp)
         ) {
-            // Subtle toolbar inside the typing canvas
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -236,7 +233,6 @@ fun LiveKeyboardScreen(
                 }
             }
 
-            // Pasted Screenshot/Image Preview if attached
             val attached = uiState.attachedSandboxImage
             if (attached != null && attached.imagePath != null) {
                 val bmp = remember(attached.imagePath) {
@@ -306,14 +302,13 @@ fun LiveKeyboardScreen(
                 )
                 if (uiState.sandboxText.text.isEmpty()) {
                     Text(
-                        text = "Type, glide swipe, or tap the mic...",
+                        text = "Type, glide swipe, or hold spacebar for languages...",
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                         fontSize = 18.sp
                     )
                 }
             }
 
-            // Show unobtrusive Switch button only if enabled in settings but not yet selected
             if (uiState.imeStatus.isEnabledInSystem && !uiState.imeStatus.isSelectedAsDefault) {
                 Spacer(modifier = Modifier.height(8.dp))
                 FilledTonalButton(
@@ -329,7 +324,6 @@ fun LiveKeyboardScreen(
             }
         }
 
-        // Docked Live Interactive Hybrid Keyboard
         HybridKeyboardView(
             settings = uiState.settings,
             suggestions = uiState.suggestions,
@@ -342,6 +336,12 @@ fun LiveKeyboardScreen(
             actions = object : HybridKeyboardActions {
                 override fun onCommitText(text: String) {
                     viewModel.commitTextToSandbox(text)
+                }
+
+                override fun onCommitTextEntry(entry: ClipboardEntryEntity) {
+                    viewModel.commitClipboardEntryToSandbox(entry) { msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
                 }
 
                 override fun onCommitWordReplacement(word: String) {
@@ -401,6 +401,10 @@ fun LiveKeyboardScreen(
                     viewModel.cycleLanguage()
                 }
 
+                override fun onSelectLanguage(language: KeyboardLanguage) {
+                    viewModel.setLanguage(language)
+                }
+
                 override fun onToggleOneHanded() {
                     viewModel.cycleOneHandedMode()
                 }
@@ -411,6 +415,14 @@ fun LiveKeyboardScreen(
 
                 override fun onToggleEcoMode() {
                     viewModel.toggleEcoBatteryMode()
+                }
+
+                override fun onUpdateHeightScale(scale: Float) {
+                    viewModel.setHeightScale(scale)
+                }
+
+                override fun onUpdatePinnedTools(tools: List<ToolbarTool>) {
+                    viewModel.updatePinnedToolbarTools(tools)
                 }
 
                 override fun onToggleClipboardPin(entry: ClipboardEntryEntity) {

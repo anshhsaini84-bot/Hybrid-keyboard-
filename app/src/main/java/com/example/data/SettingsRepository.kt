@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,7 @@ class SettingsRepository(private val context: Context) {
         val GLIDE_TYPING = booleanPreferencesKey("glide_typing")
         val SPACEBAR_CURSOR = booleanPreferencesKey("spacebar_cursor")
         val HAPTIC_FEEDBACK = booleanPreferencesKey("haptic_feedback")
+        val HAPTIC_STRENGTH_MS = intPreferencesKey("haptic_strength_ms")
         val SOUND_ON_KEY = booleanPreferencesKey("sound_on_key")
         val SOFT_MIC_VISIBLE = booleanPreferencesKey("soft_mic_visible")
         val AUTO_CAPITALIZE = booleanPreferencesKey("auto_capitalize")
@@ -33,19 +35,29 @@ class SettingsRepository(private val context: Context) {
         val ONE_HANDED_MODE = stringPreferencesKey("one_handed_mode")
         val LANGUAGE = stringPreferencesKey("language")
         val HEIGHT_SCALE = floatPreferencesKey("height_scale")
+        val PINNED_TOOLBAR_TOOLS = stringPreferencesKey("pinned_toolbar_tools")
         val ECO_BATTERY_MODE = booleanPreferencesKey("eco_battery_mode")
         val AUTO_ECO_LOW_BATTERY = booleanPreferencesKey("auto_eco_low_battery")
     }
 
     private fun readFromPreferences(prefs: Preferences): KeyboardSettings {
+        val parsedTools = prefs[Keys.PINNED_TOOLBAR_TOOLS]
+            ?.split(",")
+            ?.mapNotNull { name -> runCatching { ToolbarTool.valueOf(name) }.getOrNull() }
+            ?.distinct()
+            ?.take(5)
+            ?.takeIf { it.isNotEmpty() }
+            ?: DEFAULT_PINNED_TOOLS
+
         return KeyboardSettings(
             themeStyle = prefs[Keys.THEME_STYLE]?.let {
                 runCatching { HybridThemeStyle.valueOf(it) }.getOrNull()
-            } ?: HybridThemeStyle.OLED_OBSIDIAN,
+            } ?: HybridThemeStyle.SYSTEM_AUTO,
             showNumberRow = prefs[Keys.SHOW_NUMBER_ROW] ?: true,
             glideTypingEnabled = prefs[Keys.GLIDE_TYPING] ?: true,
             spacebarCursorEnabled = prefs[Keys.SPACEBAR_CURSOR] ?: true,
             hapticFeedbackEnabled = prefs[Keys.HAPTIC_FEEDBACK] ?: true,
+            hapticStrengthMs = (prefs[Keys.HAPTIC_STRENGTH_MS] ?: 12).coerceIn(5, 30),
             soundOnKeypress = prefs[Keys.SOUND_ON_KEY] ?: false,
             softMicAlwaysVisible = prefs[Keys.SOFT_MIC_VISIBLE] ?: true,
             autoCapitalize = prefs[Keys.AUTO_CAPITALIZE] ?: true,
@@ -59,7 +71,8 @@ class SettingsRepository(private val context: Context) {
             language = prefs[Keys.LANGUAGE]?.let {
                 runCatching { KeyboardLanguage.valueOf(it) }.getOrNull()
             } ?: KeyboardLanguage.ENGLISH_US,
-            heightScale = (prefs[Keys.HEIGHT_SCALE] ?: 1.0f).coerceIn(0.85f, 1.15f),
+            heightScale = (prefs[Keys.HEIGHT_SCALE] ?: 1.0f).coerceIn(0.72f, 1.35f),
+            pinnedToolbarTools = parsedTools,
             ecoBatteryMode = prefs[Keys.ECO_BATTERY_MODE] ?: false,
             autoEcoOnLowBattery = prefs[Keys.AUTO_ECO_LOW_BATTERY] ?: true
         )
@@ -75,6 +88,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.GLIDE_TYPING] = updated.glideTypingEnabled
             prefs[Keys.SPACEBAR_CURSOR] = updated.spacebarCursorEnabled
             prefs[Keys.HAPTIC_FEEDBACK] = updated.hapticFeedbackEnabled
+            prefs[Keys.HAPTIC_STRENGTH_MS] = updated.hapticStrengthMs.coerceIn(5, 30)
             prefs[Keys.SOUND_ON_KEY] = updated.soundOnKeypress
             prefs[Keys.SOFT_MIC_VISIBLE] = updated.softMicAlwaysVisible
             prefs[Keys.AUTO_CAPITALIZE] = updated.autoCapitalize
@@ -84,7 +98,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.AUTO_CAPTURE_CLIPBOARD] = updated.autoCaptureClipboard
             prefs[Keys.ONE_HANDED_MODE] = updated.oneHandedMode.name
             prefs[Keys.LANGUAGE] = updated.language.name
-            prefs[Keys.HEIGHT_SCALE] = updated.heightScale
+            prefs[Keys.HEIGHT_SCALE] = updated.heightScale.coerceIn(0.72f, 1.35f)
+            prefs[Keys.PINNED_TOOLBAR_TOOLS] = updated.pinnedToolbarTools.take(5).joinToString(",") { it.name }
             prefs[Keys.ECO_BATTERY_MODE] = updated.ecoBatteryMode
             prefs[Keys.AUTO_ECO_LOW_BATTERY] = updated.autoEcoOnLowBattery
         }

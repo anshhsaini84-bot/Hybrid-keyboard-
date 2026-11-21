@@ -1,7 +1,9 @@
 package com.example
 
 import com.example.data.CustomWordEntity
+import com.example.data.HybridThemeStyle
 import com.example.data.KeyboardLanguage
+import com.example.engine.ClipboardSyncManager
 import com.example.engine.DictionaryEngine
 import com.example.engine.KeyboardLayouts
 import com.example.engine.QuickTranslateEngine
@@ -27,7 +29,7 @@ class DictionaryEngineTest {
     }
 
     @Test
-    fun suggest_expandsCustomShortcutAndHinglish() {
+    fun suggest_expandsCustomShortcutAndAllLanguages() {
         val custom = listOf(CustomWordEntity(id = 1, shortcut = "omw", expansion = "On my way!"))
         val shortcutSuggestions = DictionaryEngine.suggest(
             currentWord = "omw",
@@ -46,24 +48,56 @@ class DictionaryEngineTest {
             ecoMode = false
         )
         assertTrue(hinglishSuggestions.contains("नमस्ते"))
+
+        // Verify all 11 languages return valid layouts and default suggestions
+        assertEquals(11, KeyboardLanguage.entries.size)
+        KeyboardLanguage.entries.forEach { lang ->
+            val rows = KeyboardLayouts.rowsForAlpha(lang, isShifted = false)
+            assertTrue("Expected 4 rows for $lang", rows.size == 4)
+            val emptySuggestions = DictionaryEngine.suggest("", "", lang, emptyList(), ecoMode = false)
+            assertTrue("Expected suggestions for $lang", emptySuggestions.isNotEmpty())
+        }
     }
 
     @Test
-    fun quickTranslateEngine_translatesPhrasesAndWords() {
+    fun quickTranslateEngine_translatesMultiLanguagePhrases() {
         assertEquals(
             "शुभ प्रभात",
-            QuickTranslateEngine.translate(
-                "Good morning",
-                QuickTranslateEngine.Direction.EN_OR_HINGLISH_TO_HINDI
-            )
+            QuickTranslateEngine.translate("Good morning", QuickTranslateEngine.TargetLanguage.HINDI)
         )
         assertEquals(
             "How are you doing?",
-            QuickTranslateEngine.translate(
-                "kya haal hai",
-                QuickTranslateEngine.Direction.HINGLISH_TO_ENGLISH
-            )
+            QuickTranslateEngine.translate("kya haal hai", QuickTranslateEngine.TargetLanguage.ENGLISH)
         )
+        assertEquals(
+            "Buenos días",
+            QuickTranslateEngine.translate("Good morning", QuickTranslateEngine.TargetLanguage.SPANISH)
+        )
+        assertEquals(
+            "Merci beaucoup",
+            QuickTranslateEngine.translate("Thank you", QuickTranslateEngine.TargetLanguage.FRENCH)
+        )
+        assertEquals(
+            "صباح الخير",
+            QuickTranslateEngine.translate("Good morning", QuickTranslateEngine.TargetLanguage.ARABIC)
+        )
+    }
+
+    @Test
+    fun themesAndLarge50kLineClipboardMetrics_workCleanly() {
+        assertTrue("Expected at least 18 themes", HybridThemeStyle.entries.size >= 18)
+        assertEquals(HybridThemeStyle.SYSTEM_AUTO, HybridThemeStyle.entries.first())
+
+        val fiftyThousandLines = buildString(1_100_000) {
+            for (i in 1..50_000) {
+                append("val line$i = $i")
+                if (i < 50_000) append('\n')
+            }
+        }
+        assertEquals(50_000, ClipboardSyncManager.countLines(fiftyThousandLines))
+        val preview = ClipboardSyncManager.buildPreview(fiftyThousandLines, 50_000)
+        assertTrue(preview.length <= 240)
+        assertTrue(preview.startsWith("val line1 = 1"))
     }
 
     @Test

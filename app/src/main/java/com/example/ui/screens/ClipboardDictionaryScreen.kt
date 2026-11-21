@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,8 +27,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Refresh
@@ -61,6 +62,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.engine.ClipboardSyncManager
 import com.example.ui.HybridStudioUiState
 import com.example.ui.HybridViewModel
@@ -91,13 +93,27 @@ fun ClipboardDictionaryScreen(
         }
     }
 
+    // Zero-permission SAF picker for importing massive 50,000+ line code or .txt files
+    val codeFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importTextFileToClipboard(uri) { ok ->
+                Toast.makeText(
+                    context,
+                    if (ok) "Code file saved to Clipboard" else "Could not read file",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp)
     ) {
-        // Clean header + segmented pill toggle
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -142,10 +158,10 @@ fun ClipboardDictionaryScreen(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Compact action row
+                    // Clean action row: Screenshot, Import 50K-line Code/Text file, Sync, Clear
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         FilledTonalButton(
@@ -155,13 +171,28 @@ fun ClipboardDictionaryScreen(
                                 )
                             },
                             shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("add_screenshot_button")
                         ) {
-                            Icon(Icons.Rounded.AddPhotoAlternate, null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Screenshot", maxLines = 1)
+                            Icon(Icons.Rounded.AddPhotoAlternate, null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Image", fontSize = 12.sp, maxLines = 1)
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                codeFilePicker.launch(arrayOf("text/*", "application/json", "application/xml"))
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("import_code_file_button")
+                        ) {
+                            Icon(Icons.Rounded.Description, null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Code File", fontSize = 12.sp, maxLines = 1)
                         }
                         OutlinedButton(
                             onClick = {
@@ -169,20 +200,22 @@ fun ClipboardDictionaryScreen(
                                 Toast.makeText(context, "Synced", Toast.LENGTH_SHORT).show()
                             },
                             shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                             modifier = Modifier.testTag("sync_clipboard_button")
                         ) {
-                            Icon(Icons.Rounded.Refresh, null, Modifier.size(17.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Sync")
+                            Icon(Icons.Rounded.Refresh, null, Modifier.size(16.dp))
                         }
                         if (uiState.clipboardEntries.any { !it.isPinned }) {
-                            TextButton(onClick = viewModel::clearUnpinnedClipboard) {
-                                Text("Clear")
+                            TextButton(
+                                onClick = viewModel::clearUnpinnedClipboard,
+                                contentPadding = PaddingValues(horizontal = 6.dp)
+                            ) {
+                                Text("Clear", fontSize = 12.sp)
                             }
                         }
                     }
 
-                    // Quick text add row
+                    // Multi-line capable text/code paste input
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -191,8 +224,8 @@ fun ClipboardDictionaryScreen(
                         OutlinedTextField(
                             value = newClipText,
                             onValueChange = { newClipText = it },
-                            placeholder = { Text("Add quick text clip...") },
-                            singleLine = true,
+                            placeholder = { Text("Paste text or code (up to 50,000+ lines)...") },
+                            maxLines = 3,
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .weight(1f)
@@ -203,6 +236,7 @@ fun ClipboardDictionaryScreen(
                                 if (newClipText.isNotBlank()) {
                                     viewModel.addClipboardItem(newClipText)
                                     newClipText = ""
+                                    Toast.makeText(context, "Saved to Clipboard", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             modifier = Modifier
@@ -221,7 +255,7 @@ fun ClipboardDictionaryScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Copied text and screenshots appear here",
+                                text = "Copied text, 50K-line code & screenshots appear here",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -243,7 +277,7 @@ fun ClipboardDictionaryScreen(
                                         .fillMaxWidth()
                                         .border(
                                             width = 1.dp,
-                                            color = if (entry.isPinned) {
+                                            color = if (entry.isPinned || entry.isLargeText) {
                                                 MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                                             } else {
                                                 MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
@@ -309,29 +343,76 @@ fun ClipboardDictionaryScreen(
                                                 )
                                             }
                                         } else {
-                                            Text(
-                                                text = entry.content,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                maxLines = 3,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f)
-                                            )
+                                            if (entry.isLargeText) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                        .background(MaterialTheme.colorScheme.primaryContainer),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Code,
+                                                        contentDescription = "Large Code Block",
+                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                Spacer(Modifier.width(10.dp))
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                if (entry.isLargeText || entry.lineCount > 3) {
+                                                    Text(
+                                                        text = "${entry.lineCount} lines • ${ClipboardSyncManager.formatCharSize(entry.charCount)}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                                Text(
+                                                    text = entry.content,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    maxLines = 3,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    viewModel.copyTextEntryToSystemClipboard(entry) { ok ->
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (ok) "Copied (${entry.lineCount} lines)" else "Copy failed",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.size(34.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.ContentCopy,
+                                                    contentDescription = "Copy text",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(17.dp)
+                                                )
+                                            }
                                         }
                                         IconButton(
                                             onClick = { viewModel.toggleClipboardPin(entry) },
-                                            modifier = Modifier.size(36.dp)
+                                            modifier = Modifier.size(34.dp)
                                         ) {
                                             Icon(
                                                 Icons.Rounded.PushPin,
                                                 contentDescription = "Pin",
                                                 tint = if (entry.isPinned) MaterialTheme.colorScheme.primary
                                                 else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(17.dp)
                                             )
                                         }
                                         IconButton(
                                             onClick = { viewModel.deleteClipboardEntry(entry.id) },
-                                            modifier = Modifier.size(36.dp)
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .testTag("delete_clip_${entry.id}")
                                         ) {
                                             Icon(
                                                 Icons.Rounded.DeleteOutline,

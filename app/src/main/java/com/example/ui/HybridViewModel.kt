@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.BatteryTelemetry
 import com.example.data.ClipboardEntryEntity
 import com.example.data.CustomWordEntity
+import com.example.data.DEFAULT_PINNED_TOOLS
 import com.example.data.HybridDataRepository
 import com.example.data.HybridDatabase
 import com.example.data.HybridThemeStyle
@@ -22,6 +23,7 @@ import com.example.data.OneHandedMode
 import com.example.data.SettingsRepository
 import com.example.data.ShiftState
 import com.example.data.TextEditCommand
+import com.example.data.ToolbarTool
 import com.example.engine.BatteryMonitor
 import com.example.engine.ClipboardSyncManager
 import com.example.engine.DictionaryEngine
@@ -164,8 +166,38 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun importTextFileToClipboard(uri: Uri, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val ok = clipboardSync.importTextFileFromUri(uri)
+            onResult(ok)
+        }
+    }
+
     fun copyImageEntryToSystemClipboard(entry: ClipboardEntryEntity): Boolean {
         return clipboardSync.copyImageEntryToSystemClipboard(entry) != null
+    }
+
+    fun copyTextEntryToSystemClipboard(entry: ClipboardEntryEntity, onResult: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val ok = clipboardSync.copyTextEntryToSystemClipboard(entry)
+            onResult(ok)
+        }
+    }
+
+    fun commitClipboardEntryToSandbox(
+        entry: ClipboardEntryEntity,
+        onLargePasteInfo: (String) -> Unit = {}
+    ) {
+        if (!entry.isLargeText) {
+            commitTextToSandbox(entry.content)
+            return
+        }
+        viewModelScope.launch {
+            val previewChunk = clipboardSync.readFullText(entry, maxChars = 2_400)
+            val suffix = "\n… [${entry.lineCount} lines • ${ClipboardSyncManager.formatCharSize(entry.charCount)} stored cleanly for full chunked paste in any app]"
+            commitTextToSandbox(previewChunk + suffix)
+            onLargePasteInfo("Loaded preview of ${entry.lineCount} lines (streams 100% in any app)")
+        }
     }
 
     fun attachImageToSandbox(entry: ClipboardEntryEntity) {
@@ -318,7 +350,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 if (selected.isNotBlank()) {
                     clipboardSync.copyTextToSystemClipboard(selected)
-                    viewModelScope.launch { dataRepo.addClipboardText(selected) }
+                    viewModelScope.launch { clipboardSync.saveTextToClipboard(selected) }
                 }
             }
             TextEditCommand.CUT -> {
@@ -328,15 +360,15 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
                 if (cutText.isNotBlank()) {
                     pushUndoSnapshot()
                     clipboardSync.copyTextToSystemClipboard(cutText)
-                    viewModelScope.launch { dataRepo.addClipboardText(cutText) }
+                    viewModelScope.launch { clipboardSync.saveTextToClipboard(cutText) }
                     val remaining = if (start != end) current.text.removeRange(start, end) else ""
                     _sandboxText.value = TextFieldValue(remaining, TextRange(if (start != end) start else 0))
                 }
             }
             TextEditCommand.PASTE -> {
-                val latestText = uiState.value.clipboardEntries.firstOrNull { !it.isImage }?.content
-                if (!latestText.isNullOrBlank()) {
-                    commitTextToSandbox(latestText)
+                val latestEntry = uiState.value.clipboardEntries.firstOrNull { !it.isImage }
+                if (latestEntry != null) {
+                    commitClipboardEntryToSandbox(latestEntry)
                 }
             }
             TextEditCommand.UNDO -> {
@@ -361,7 +393,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         if (text.isNotEmpty()) {
             clipboardSync.copyTextToSystemClipboard(text)
             viewModelScope.launch {
-                dataRepo.addClipboardText(text, pinned = false)
+                clipboardSync.saveTextToClipboard(text, pinned = false)
             }
         }
     }
@@ -430,6 +462,12 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { settingsRepo.updateSettings { it.copy(hapticFeedbackEnabled = enabled) } }
     }
 
+    fun setHapticStrength(ms: Int) {
+        viewModelScope.launch {
+            settingsRepo.updateSettings { it.copy(hapticStrengthMs = ms.coerceIn(5, 30)) }
+        }
+    }
+
     fun toggleSound(enabled: Boolean) {
         viewModelScope.launch { settingsRepo.updateSettings { it.copy(soundOnKeypress = enabled) } }
     }
@@ -469,7 +507,14 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setHeightScale(scale: Float) {
-        viewModelScope.launch { settingsRepo.updateSettings { it.copy(heightScale = scale.coerceIn(0.85f, 1.15f)) } }
+        viewModelScope.launch { settingsRepo.updateSettings { it.copy(heightScale = scale.coerceIn(0.72f, 1.35f)) } }
+    }
+
+    fun updatePinnedToolbarTools(tools: List<ToolbarTool>) {
+        val clean = tools.distinct().take(5).ifEmpty { DEFAULT_PINNED_TOOLS }
+        viewModelScope.launch {
+            settingsRepo.updateSettings { it.copy(pinnedToolbarTools = clean) }
+        }
     }
 
     fun toggleEcoBatteryMode(enabled: Boolean? = null) {
@@ -485,7 +530,7 @@ class HybridViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun addClipboardItem(text: String) {
-        viewModelScope.launch { dataRepo.addClipboardText(text) }
+        viewModelScope.launch { clipboardSync.saveTextToClipboard(text) }
     }
 
     fun toggleClipboardPin(entry: ClipboardEntryEntity) {

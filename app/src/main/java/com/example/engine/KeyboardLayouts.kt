@@ -45,6 +45,15 @@ object KeyboardLayouts {
         KeySpec("n0", "0", ")", listOf("]", "}", ">", "°"))
     )
 
+    private fun bottomRow(spaceLabel: String = "Space", periodPrimary: String = ".", commaSecondary: String = "!"): List<KeySpec> = listOf(
+        KeySpec("sym", "?123", weight = 1.35f, type = KeyType.SYMBOLS_SWITCH),
+        KeySpec("comma", ",", commaSecondary, listOf(",", commaSecondary, ";", ":"), weight = 0.9f, type = KeyType.COMMA),
+        KeySpec("emoji", "☺", weight = 0.9f, type = KeyType.EMOJI_TRIGGER),
+        KeySpec("space", spaceLabel, weight = 4.2f, type = KeyType.SPACE),
+        KeySpec("period", periodPrimary, "?", listOf(periodPrimary, "?", "!", ",", ":", "'", "\"", "-"), weight = 0.95f, type = KeyType.PERIOD),
+        KeySpec("enter", "↵", weight = 1.5f, type = KeyType.ENTER)
+    )
+
     val qwertyRows: List<List<KeySpec>> = listOf(
         listOf(
             KeySpec("q", "q", "1", listOf("1", "q")),
@@ -80,14 +89,67 @@ object KeyboardLayouts {
             KeySpec("m", "m", "?", listOf("?", "¿")),
             KeySpec("backspace", "⌫", weight = 1.45f, type = KeyType.BACKSPACE)
         ),
+        bottomRow()
+    )
+
+    val spanishRows: List<List<KeySpec>> = listOf(
+        qwertyRows[0],
+        qwertyRows[1] + KeySpec("es_n", "ñ", "!", listOf("ñ", "n")),
+        qwertyRows[2],
+        bottomRow("Español", ".", "¿")
+    )
+
+    val frenchAzertyRows: List<List<KeySpec>> = listOf(
         listOf(
-            KeySpec("sym", "?123", weight = 1.35f, type = KeyType.SYMBOLS_SWITCH),
-            KeySpec("comma", ",", "!", listOf(",", "!", ";", ":"), weight = 0.9f, type = KeyType.COMMA),
-            KeySpec("emoji", "☺", weight = 0.9f, type = KeyType.EMOJI_TRIGGER),
-            KeySpec("space", "Space", weight = 4.2f, type = KeyType.SPACE),
-            KeySpec("period", ".", "?", listOf(".", "?", "!", ",", ":", "'", "\"", "-"), weight = 0.95f, type = KeyType.PERIOD),
-            KeySpec("enter", "↵", weight = 1.5f, type = KeyType.ENTER)
-        )
+            KeySpec("fr_a", "a", "1", listOf("1", "à", "â", "æ")),
+            KeySpec("fr_z", "z", "2", listOf("2")),
+            KeySpec("fr_e", "e", "3", listOf("3", "é", "è", "ê", "ë", "€")),
+            KeySpec("fr_r", "r", "4", listOf("4")),
+            KeySpec("fr_t", "t", "5", listOf("5")),
+            KeySpec("fr_y", "y", "6", listOf("6", "ÿ")),
+            KeySpec("fr_u", "u", "7", listOf("7", "ù", "û", "ü")),
+            KeySpec("fr_i", "i", "8", listOf("8", "î", "ï")),
+            KeySpec("fr_o", "o", "9", listOf("9", "ô", "œ")),
+            KeySpec("fr_p", "p", "0", listOf("0"))
+        ),
+        listOf(
+            KeySpec("fr_q", "q", "@"), KeySpec("fr_s", "s", "#"), KeySpec("fr_d", "d", "$"),
+            KeySpec("fr_f", "f", "%"), KeySpec("fr_g", "g", "&"), KeySpec("fr_h", "h", "-"),
+            KeySpec("fr_j", "j", "+"), KeySpec("fr_k", "k", "("), KeySpec("fr_l", "l", ")"),
+            KeySpec("fr_m", "m", "'")
+        ),
+        listOf(
+            KeySpec("shift", "⇧", weight = 1.45f, type = KeyType.SHIFT),
+            KeySpec("fr_w", "w", "*"), KeySpec("fr_x", "x", "\""),
+            KeySpec("fr_c", "c", "ç", listOf("ç", "'")),
+            KeySpec("fr_v", "v", ":"), KeySpec("fr_b", "b", ";"), KeySpec("fr_n", "n", "!"),
+            KeySpec("fr_ap", "'", "?"),
+            KeySpec("backspace", "⌫", weight = 1.45f, type = KeyType.BACKSPACE)
+        ),
+        bottomRow("Français")
+    )
+
+    val germanQwertzRows: List<List<KeySpec>> = listOf(
+        listOf(
+            KeySpec("de_q", "q", "1"), KeySpec("de_w", "w", "2"), KeySpec("de_e", "e", "3", listOf("3", "é", "€")),
+            KeySpec("de_r", "r", "4"), KeySpec("de_t", "t", "5"), KeySpec("de_z", "z", "6"),
+            KeySpec("de_u", "u", "7", listOf("7", "ü")), KeySpec("de_i", "i", "8"),
+            KeySpec("de_o", "o", "9", listOf("9", "ö")), KeySpec("de_p", "p", "0")
+        ),
+        listOf(
+            KeySpec("de_a", "a", "ä", listOf("ä", "@")), KeySpec("de_s", "s", "ß", listOf("ß", "#")),
+            KeySpec("de_d", "d", "$"), KeySpec("de_f", "f", "%"), KeySpec("de_g", "g", "&"),
+            KeySpec("de_h", "h", "-"), KeySpec("de_j", "j", "+"), KeySpec("de_k", "k", "("),
+            KeySpec("de_l", "l", ")")
+        ),
+        listOf(
+            KeySpec("shift", "⇧", weight = 1.45f, type = KeyType.SHIFT),
+            KeySpec("de_y", "y", "*"), KeySpec("de_x", "x", "\""), KeySpec("de_c", "c", "'"),
+            KeySpec("de_v", "v", ":"), KeySpec("de_b", "b", ";"), KeySpec("de_n", "n", "!"),
+            KeySpec("de_m", "m", "?"),
+            KeySpec("backspace", "⌫", weight = 1.45f, type = KeyType.BACKSPACE)
+        ),
+        bottomRow("Deutsch")
     )
 
     val hindiRows: List<List<KeySpec>> = listOf(
@@ -126,53 +188,120 @@ object KeyboardLayouts {
             KeySpec("hi_ya", "य", "ट", listOf("य", "ट", "ठ", "ड", "ढ")),
             KeySpec("backspace", "⌫", weight = 1.35f, type = KeyType.BACKSPACE)
         ),
-        listOf(
-            KeySpec("sym", "?123", weight = 1.35f, type = KeyType.SYMBOLS_SWITCH),
-            KeySpec("comma", ",", "।", listOf(",", "।", "!"), weight = 0.9f, type = KeyType.COMMA),
-            KeySpec("emoji", "☺", weight = 0.9f, type = KeyType.EMOJI_TRIGGER),
-            KeySpec("space", "हिन्दी", weight = 4.2f, type = KeyType.SPACE),
-            KeySpec("period", "।", ".", listOf("।", ".", "?", "!"), weight = 0.95f, type = KeyType.PERIOD),
-            KeySpec("enter", "↵", weight = 1.5f, type = KeyType.ENTER)
-        )
+        bottomRow("हिन्दी", "।", "।")
     )
 
     val hindiShiftRows: List<List<KeySpec>> = listOf(
         listOf(
-            KeySpec("his_au", "औ", "ौ"),
-            KeySpec("his_ai", "ऐ", "ै"),
-            KeySpec("his_aa", "आ", "ा"),
-            KeySpec("his_ii", "ई", "ी"),
-            KeySpec("his_uu", "ऊ", "ू"),
-            KeySpec("his_bha", "भ", "ब"),
-            KeySpec("his_nga", "ङ", "ह"),
-            KeySpec("his_gha", "घ", "ग"),
-            KeySpec("his_dha", "ध", "द"),
+            KeySpec("his_au", "औ", "ौ"), KeySpec("his_ai", "ऐ", "ै"), KeySpec("his_aa", "आ", "ा"),
+            KeySpec("his_ii", "ई", "ी"), KeySpec("his_uu", "ऊ", "ू"), KeySpec("his_bha", "भ", "ब"),
+            KeySpec("his_nga", "ङ", "ह"), KeySpec("his_gha", "घ", "ग"), KeySpec("his_dha", "ध", "द"),
             KeySpec("his_jha", "झ", "ज")
         ),
         listOf(
-            KeySpec("his_o", "ओ", "ो"),
-            KeySpec("his_e", "ए", "े"),
-            KeySpec("his_a", "अ", "्"),
-            KeySpec("his_i", "इ", "ि"),
-            KeySpec("his_u", "उ", "ु"),
-            KeySpec("his_pha", "फ", "प"),
-            KeySpec("his_ri", "ऋ", "र"),
-            KeySpec("his_kha", "ख", "क"),
-            KeySpec("his_tha", "थ", "त"),
+            KeySpec("his_o", "ओ", "ो"), KeySpec("his_e", "ए", "े"), KeySpec("his_a", "अ", "्"),
+            KeySpec("his_i", "इ", "ि"), KeySpec("his_u", "उ", "ु"), KeySpec("his_pha", "फ", "प"),
+            KeySpec("his_ri", "ऋ", "र"), KeySpec("his_kha", "ख", "क"), KeySpec("his_tha", "थ", "त"),
             KeySpec("his_chha", "छ", "च")
         ),
         listOf(
             KeySpec("shift", "⇧", weight = 1.35f, type = KeyType.SHIFT),
-            KeySpec("his_chandra", "ँ", "ं"),
-            KeySpec("his_nna", "ण", "म"),
-            KeySpec("his_tta", "ट", "ठ"),
-            KeySpec("his_dda", "ड", "ढ"),
-            KeySpec("his_sha", "श", "ष"),
-            KeySpec("his_ssha", "ष", "स"),
+            KeySpec("his_chandra", "ँ", "ं"), KeySpec("his_nna", "ण", "म"), KeySpec("his_tta", "ट", "ठ"),
+            KeySpec("his_dda", "ड", "ढ"), KeySpec("his_sha", "श", "ष"), KeySpec("his_ssha", "ष", "स"),
             KeySpec("his_ksha", "क्ष", "त्र", listOf("क्ष", "त्र", "ज्ञ", "श्र")),
             KeySpec("backspace", "⌫", weight = 1.35f, type = KeyType.BACKSPACE)
         ),
         hindiRows[3]
+    )
+
+    val arabicRows: List<List<KeySpec>> = listOf(
+        listOf(
+            KeySpec("ar_dad", "ض"), KeySpec("ar_sad", "ص"), KeySpec("ar_tha", "ث"),
+            KeySpec("ar_qaf", "ق"), KeySpec("ar_fa", "ف"), KeySpec("ar_ghain", "غ"),
+            KeySpec("ar_ain", "ع"), KeySpec("ar_ha", "ه"), KeySpec("ar_kha", "خ"),
+            KeySpec("ar_hah", "ح"), KeySpec("ar_jeem", "ج")
+        ),
+        listOf(
+            KeySpec("ar_sheen", "ش"), KeySpec("ar_seen", "س"), KeySpec("ar_yeh", "ي", "ى", listOf("ي", "ى", "ئ")),
+            KeySpec("ar_beh", "ب"), KeySpec("ar_lam", "ل"), KeySpec("ar_alef", "ا", "أ", listOf("ا", "أ", "إ", "آ")),
+            KeySpec("ar_teh", "ت", "ة", listOf("ت", "ة")), KeySpec("ar_noon", "ن"),
+            KeySpec("ar_meem", "م"), KeySpec("ar_kaf", "ك")
+        ),
+        listOf(
+            KeySpec("shift", "⇧", weight = 1.25f, type = KeyType.SHIFT),
+            KeySpec("ar_hamza", "ئ"), KeySpec("ar_hamza2", "ء"), KeySpec("ar_waw", "و", "ؤ"),
+            KeySpec("ar_ra", "ر"), KeySpec("ar_dal", "د", "ذ"), KeySpec("ar_zay", "ز"),
+            KeySpec("ar_tah", "ط", "ظ"),
+            KeySpec("backspace", "⌫", weight = 1.25f, type = KeyType.BACKSPACE)
+        ),
+        bottomRow("العربية", ".", "،")
+    )
+
+    val russianRows: List<List<KeySpec>> = listOf(
+        listOf(
+            KeySpec("ru_1", "й"), KeySpec("ru_2", "ц"), KeySpec("ru_3", "у"), KeySpec("ru_4", "к"),
+            KeySpec("ru_5", "е", "ё", listOf("е", "ё")), KeySpec("ru_6", "н"), KeySpec("ru_7", "г"),
+            KeySpec("ru_8", "ш"), KeySpec("ru_9", "щ"), KeySpec("ru_10", "з"), KeySpec("ru_11", "х")
+        ),
+        listOf(
+            KeySpec("ru_12", "ф"), KeySpec("ru_13", "ы"), KeySpec("ru_14", "в"), KeySpec("ru_15", "а"),
+            KeySpec("ru_16", "п"), KeySpec("ru_17", "р"), KeySpec("ru_18", "о"), KeySpec("ru_19", "л"),
+            KeySpec("ru_20", "д"), KeySpec("ru_21", "ж"), KeySpec("ru_22", "э")
+        ),
+        listOf(
+            KeySpec("shift", "⇧", weight = 1.35f, type = KeyType.SHIFT),
+            KeySpec("ru_23", "я"), KeySpec("ru_24", "ч"), KeySpec("ru_25", "с"), KeySpec("ru_26", "м"),
+            KeySpec("ru_27", "и"), KeySpec("ru_28", "т"), KeySpec("ru_29", "ь", "ъ"),
+            KeySpec("ru_30", "б"), KeySpec("ru_31", "ю"),
+            KeySpec("backspace", "⌫", weight = 1.35f, type = KeyType.BACKSPACE)
+        ),
+        bottomRow("Русский")
+    )
+
+    val bengaliRows: List<List<KeySpec>> = listOf(
+        listOf(
+            KeySpec("bn_1", "ৌ", "ঔ"), KeySpec("bn_2", "ৈ", "ঐ"), KeySpec("bn_3", "া", "আ"),
+            KeySpec("bn_4", "ী", "ঈ"), KeySpec("bn_5", "ূ", "ঊ"), KeySpec("bn_6", "ব", "ভ"),
+            KeySpec("bn_7", "হ", "ঙ"), KeySpec("bn_8", "গ", "ঘ"), KeySpec("bn_9", "দ", "ধ"),
+            KeySpec("bn_10", "জ", "ঝ")
+        ),
+        listOf(
+            KeySpec("bn_11", "ো", "ও"), KeySpec("bn_12", "ে", "এ"), KeySpec("bn_13", "্", "অ"),
+            KeySpec("bn_14", "ি", "ই"), KeySpec("bn_15", "ু", "উ"), KeySpec("bn_16", "প", "ফ"),
+            KeySpec("bn_17", "র", "ড়"), KeySpec("bn_18", "ক", "খ"), KeySpec("bn_19", "ত", "থ"),
+            KeySpec("bn_20", "চ", "ছ")
+        ),
+        listOf(
+            KeySpec("shift", "⇧", weight = 1.35f, type = KeyType.SHIFT),
+            KeySpec("bn_21", "ং", "ঁ"), KeySpec("bn_22", "ম", "ণ"), KeySpec("bn_23", "ন", "ঞ"),
+            KeySpec("bn_24", "য", "য়"), KeySpec("bn_25", "ল", "শ"), KeySpec("bn_26", "স", "ষ"),
+            KeySpec("bn_27", "ট", "ঠ", listOf("ট", "ঠ", "ড", "ঢ")),
+            KeySpec("backspace", "⌫", weight = 1.35f, type = KeyType.BACKSPACE)
+        ),
+        bottomRow("বাংলা", "।", "।")
+    )
+
+    val tamilRows: List<List<KeySpec>> = listOf(
+        listOf(
+            KeySpec("ta_1", "ௌ", "ஔ"), KeySpec("ta_2", "ை", "ஐ"), KeySpec("ta_3", "ா", "ஆ"),
+            KeySpec("ta_4", "ீ", "ஈ"), KeySpec("ta_5", "ூ", "ஊ"), KeySpec("ta_6", "ப"),
+            KeySpec("ta_7", "ஹ", "ங"), KeySpec("ta_8", "க"), KeySpec("ta_9", "த"),
+            KeySpec("ta_10", "ஜ", "ச")
+        ),
+        listOf(
+            KeySpec("ta_11", "ோ", "ஓ"), KeySpec("ta_12", "ே", "ஏ"), KeySpec("ta_13", "்", "அ"),
+            KeySpec("ta_14", "ி", "இ"), KeySpec("ta_15", "ு", "உ"), KeySpec("ta_16", "ர", "ற"),
+            KeySpec("ta_17", "ல", "ள"), KeySpec("ta_18", "வ"), KeySpec("ta_19", "ட"),
+            KeySpec("ta_20", "ண", "ந")
+        ),
+        listOf(
+            KeySpec("shift", "⇧", weight = 1.35f, type = KeyType.SHIFT),
+            KeySpec("ta_21", "ெ", "எ"), KeySpec("ta_22", "ொ", "ஒ"), KeySpec("ta_23", "ம"),
+            KeySpec("ta_24", "ன", "ஞ"), KeySpec("ta_25", "ய"), KeySpec("ta_26", "ழ"),
+            KeySpec("ta_27", "ஸ", "ஷ"),
+            KeySpec("backspace", "⌫", weight = 1.35f, type = KeyType.BACKSPACE)
+        ),
+        bottomRow("தமிழ்")
     )
 
     val symbolsPage1: List<List<KeySpec>> = listOf(
@@ -308,10 +437,37 @@ object KeyboardLayouts {
         return if (matched.isNotEmpty()) matched else emojiCategories.flatMap { it.emojis }.take(16)
     }
 
-    fun rowsForAlpha(language: KeyboardLanguage, isHindiShifted: Boolean): List<List<KeySpec>> {
+    fun usesCaseShift(language: KeyboardLanguage): Boolean = when (language) {
+        KeyboardLanguage.ENGLISH_US,
+        KeyboardLanguage.HINGLISH,
+        KeyboardLanguage.SPANISH,
+        KeyboardLanguage.FRENCH,
+        KeyboardLanguage.GERMAN,
+        KeyboardLanguage.RUSSIAN -> true
+        else -> false
+    }
+
+    fun supportsGlide(language: KeyboardLanguage): Boolean = when (language) {
+        KeyboardLanguage.ENGLISH_US,
+        KeyboardLanguage.HINGLISH,
+        KeyboardLanguage.SPANISH,
+        KeyboardLanguage.FRENCH,
+        KeyboardLanguage.GERMAN -> true
+        else -> false
+    }
+
+    fun rowsForAlpha(language: KeyboardLanguage, isShifted: Boolean): List<List<KeySpec>> {
         return when (language) {
-            KeyboardLanguage.HINDI_DEVANAGARI -> if (isHindiShifted) hindiShiftRows else hindiRows
             KeyboardLanguage.ENGLISH_US, KeyboardLanguage.HINGLISH -> qwertyRows
+            KeyboardLanguage.HINDI_DEVANAGARI, KeyboardLanguage.MARATHI ->
+                if (isShifted) hindiShiftRows else hindiRows
+            KeyboardLanguage.SPANISH -> spanishRows
+            KeyboardLanguage.FRENCH -> frenchAzertyRows
+            KeyboardLanguage.GERMAN -> germanQwertzRows
+            KeyboardLanguage.ARABIC -> arabicRows
+            KeyboardLanguage.RUSSIAN -> russianRows
+            KeyboardLanguage.BENGALI -> bengaliRows
+            KeyboardLanguage.TAMIL -> tamilRows
         }
     }
 }

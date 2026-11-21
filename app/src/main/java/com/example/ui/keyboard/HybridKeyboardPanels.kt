@@ -7,7 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,19 +26,20 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BatterySaver
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
@@ -57,6 +58,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -77,17 +80,54 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ClipboardEntryEntity
-import com.example.data.HybridThemeStyle
 import com.example.data.KeyboardLanguage
 import com.example.data.KeyboardPanel
 import com.example.data.KeyboardSettings
+import com.example.data.OneHandedMode
+import com.example.data.ResolvedKeyboardColors
+import com.example.data.ToolbarTool
 import com.example.engine.ClipboardSyncManager
 import com.example.engine.KeyboardLayouts
 import com.example.engine.VoiceDictationState
 
+fun ToolbarTool.iconVector(): ImageVector = when (this) {
+    ToolbarTool.CLIPBOARD -> Icons.Rounded.ContentPaste
+    ToolbarTool.TEXT_EDIT -> Icons.Rounded.OpenWith
+    ToolbarTool.TRANSLATE -> Icons.Rounded.Translate
+    ToolbarTool.RESIZE -> Icons.Rounded.AspectRatio
+    ToolbarTool.EMOJI -> Icons.Rounded.EmojiEmotions
+    ToolbarTool.ONE_HANDED -> Icons.Rounded.Smartphone
+    ToolbarTool.FLOATING -> Icons.Rounded.PictureInPictureAlt
+    ToolbarTool.LANGUAGE -> Icons.Rounded.Language
+    ToolbarTool.ECO -> Icons.Rounded.BatterySaver
+    ToolbarTool.SETTINGS -> Icons.Rounded.Settings
+}
+
+fun ToolbarTool.isActiveFor(
+    activePanel: KeyboardPanel,
+    settings: KeyboardSettings
+): Boolean = when (this) {
+    ToolbarTool.CLIPBOARD -> activePanel == KeyboardPanel.CLIPBOARD
+    ToolbarTool.TEXT_EDIT -> activePanel == KeyboardPanel.TEXT_EDIT
+    ToolbarTool.TRANSLATE -> activePanel == KeyboardPanel.TRANSLATE
+    ToolbarTool.RESIZE -> activePanel == KeyboardPanel.RESIZE
+    ToolbarTool.EMOJI -> activePanel == KeyboardPanel.EMOJI
+    ToolbarTool.ONE_HANDED -> settings.oneHandedMode != OneHandedMode.OFF
+    ToolbarTool.FLOATING -> settings.floatingMode
+    ToolbarTool.LANGUAGE -> settings.language != KeyboardLanguage.ENGLISH_US
+    ToolbarTool.ECO -> settings.ecoBatteryMode
+    ToolbarTool.SETTINGS -> false
+}
+
+/**
+ * Uncluttered top utility strip:
+ * - Left: More Tools drawer button (also opens/closes with a vertical swipe on the bar)
+ * - Center: Only the user's pinned primary tools (default 4: Clipboard, Text Edit, Convert, Resize)
+ * - Right: Sleek circular Soft Microphone button
+ */
 @Composable
 fun KeyboardTopStrip(
-    theme: HybridThemeStyle,
+    theme: ResolvedKeyboardColors,
     settings: KeyboardSettings,
     activePanel: KeyboardPanel,
     suggestions: List<String>,
@@ -95,146 +135,90 @@ fun KeyboardTopStrip(
     voiceState: VoiceDictationState,
     hasScreenshotInClipboard: Boolean,
     onSuggestionClick: (String) -> Unit,
-    onPanelToggle: (KeyboardPanel) -> Unit,
-    onMicClick: () -> Unit,
-    onCycleLanguage: () -> Unit,
-    onToggleOneHanded: () -> Unit,
-    onToggleFloating: () -> Unit,
-    onToggleEcoMode: () -> Unit,
-    onOpenSettings: (() -> Unit)?
+    onToolClick: (ToolbarTool) -> Unit,
+    onToggleMoreTools: () -> Unit,
+    onMicClick: () -> Unit
 ) {
+    var swipeDragY by remember { mutableFloatStateOf(0f) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(theme.utilityBarColor)
     ) {
-        // Clean, balanced Samsung × Gboard utility bar
+        // Subtle drag indicator + uncluttered top utility bar (supports swipe up/down for hidden tools)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(42.dp)
+                .pointerInput(activePanel) {
+                    detectVerticalDragGestures(
+                        onDragStart = { swipeDragY = 0f },
+                        onVerticalDrag = { _, dragAmount ->
+                            swipeDragY += dragAmount
+                        },
+                        onDragEnd = {
+                            if (swipeDragY < -28f && activePanel != KeyboardPanel.MORE_TOOLS) {
+                                onToggleMoreTools()
+                            } else if (swipeDragY > 28f && activePanel == KeyboardPanel.MORE_TOOLS) {
+                                onToggleMoreTools()
+                            }
+                            swipeDragY = 0f
+                        }
+                    )
+                }
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Left: Hidden Tools Bag button (tap or swipe bar)
+            UtilityIconButton(
+                icon = if (activePanel == KeyboardPanel.MORE_TOOLS) Icons.Rounded.Close else Icons.Rounded.Apps,
+                contentDescription = "More Tools & Customize",
+                isActive = activePanel == KeyboardPanel.MORE_TOOLS,
+                theme = theme,
+                testTag = "kbd_util_more_tools",
+                onClick = onToggleMoreTools
+            )
+
+            // Center: Clean, evenly spaced primary tools (default 4, customizable up to 5)
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
+                    .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                UtilityIconButton(
-                    icon = if (activePanel == KeyboardPanel.EMOJI) Icons.Rounded.Keyboard else Icons.Rounded.EmojiEmotions,
-                    contentDescription = "Emoji & Kaomoji Panel",
-                    isActive = activePanel == KeyboardPanel.EMOJI,
-                    theme = theme,
-                    testTag = "kbd_util_emoji",
-                    onClick = {
-                        onPanelToggle(
-                            if (activePanel == KeyboardPanel.EMOJI) KeyboardPanel.ALPHA else KeyboardPanel.EMOJI
+                settings.pinnedToolbarTools.take(5).forEach { tool ->
+                    Box {
+                        UtilityIconButton(
+                            icon = tool.iconVector(),
+                            contentDescription = tool.label,
+                            isActive = tool.isActiveFor(activePanel, settings),
+                            theme = theme,
+                            testTag = "kbd_util_${tool.name.lowercase()}",
+                            onClick = { onToolClick(tool) }
                         )
-                    }
-                )
-                Box {
-                    UtilityIconButton(
-                        icon = Icons.Rounded.ContentPaste,
-                        contentDescription = "Clipboard & Screenshots",
-                        isActive = activePanel == KeyboardPanel.CLIPBOARD,
-                        theme = theme,
-                        testTag = "kbd_util_clipboard",
-                        onClick = {
-                            onPanelToggle(
-                                if (activePanel == KeyboardPanel.CLIPBOARD) KeyboardPanel.ALPHA else KeyboardPanel.CLIPBOARD
+                        if (tool == ToolbarTool.CLIPBOARD && hasScreenshotInClipboard) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 6.dp, end = 6.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(theme.accentColor)
                             )
                         }
-                    )
-                    if (hasScreenshotInClipboard) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 6.dp, end = 6.dp)
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(theme.accentColor)
-                        )
                     }
-                }
-                UtilityIconButton(
-                    icon = Icons.Rounded.OpenWith,
-                    contentDescription = "Text Editing Cursor Pad",
-                    isActive = activePanel == KeyboardPanel.TEXT_EDIT,
-                    theme = theme,
-                    testTag = "kbd_util_text_edit",
-                    onClick = {
-                        onPanelToggle(
-                            if (activePanel == KeyboardPanel.TEXT_EDIT) KeyboardPanel.ALPHA else KeyboardPanel.TEXT_EDIT
-                        )
-                    }
-                )
-                UtilityIconButton(
-                    icon = Icons.Rounded.Translate,
-                    contentDescription = "Instant Translate",
-                    isActive = activePanel == KeyboardPanel.TRANSLATE,
-                    theme = theme,
-                    testTag = "kbd_util_translate",
-                    onClick = {
-                        onPanelToggle(
-                            if (activePanel == KeyboardPanel.TRANSLATE) KeyboardPanel.ALPHA else KeyboardPanel.TRANSLATE
-                        )
-                    }
-                )
-                UtilityIconButton(
-                    icon = Icons.Rounded.Language,
-                    contentDescription = "Switch Language",
-                    isActive = settings.language != KeyboardLanguage.ENGLISH_US,
-                    theme = theme,
-                    testTag = "kbd_util_language",
-                    onClick = onCycleLanguage
-                )
-                UtilityIconButton(
-                    icon = Icons.Rounded.Smartphone,
-                    contentDescription = "One-Handed Mode",
-                    isActive = settings.oneHandedMode.name != "OFF",
-                    theme = theme,
-                    testTag = "kbd_util_one_handed",
-                    onClick = onToggleOneHanded
-                )
-                UtilityIconButton(
-                    icon = Icons.Rounded.PictureInPictureAlt,
-                    contentDescription = "Floating Keyboard Mode",
-                    isActive = settings.floatingMode,
-                    theme = theme,
-                    testTag = "kbd_util_floating",
-                    onClick = onToggleFloating
-                )
-                UtilityIconButton(
-                    icon = Icons.Rounded.BatterySaver,
-                    contentDescription = "Eco Battery Saver",
-                    isActive = settings.ecoBatteryMode,
-                    theme = theme,
-                    testTag = "kbd_util_eco",
-                    onClick = onToggleEcoMode
-                )
-                if (onOpenSettings != null) {
-                    UtilityIconButton(
-                        icon = Icons.Rounded.Settings,
-                        contentDescription = "Keyboard Settings",
-                        isActive = false,
-                        theme = theme,
-                        testTag = "kbd_util_settings",
-                        onClick = onOpenSettings
-                    )
                 }
             }
 
-            // Sleek circular Soft Microphone button
+            // Right: Sleek circular Soft Microphone button
             if (settings.softMicAlwaysVisible) {
                 val isListening = voiceState is VoiceDictationState.Listening ||
                     voiceState is VoiceDictationState.Partial
                 Box(
                     modifier = Modifier
-                        .padding(start = 6.dp)
                         .size(34.dp)
                         .clip(CircleShape)
                         .background(
@@ -247,7 +231,7 @@ fun KeyboardTopStrip(
                     Icon(
                         imageVector = if (isListening) Icons.Rounded.MicOff else Icons.Rounded.Mic,
                         contentDescription = "Soft Voice Microphone",
-                        tint = if (isListening) Color.Black else theme.accentColor,
+                        tint = if (isListening) (if (theme.isLight) Color.White else Color.Black) else theme.accentColor,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -301,7 +285,7 @@ private fun UtilityIconButton(
     icon: ImageVector,
     contentDescription: String,
     isActive: Boolean,
-    theme: HybridThemeStyle,
+    theme: ResolvedKeyboardColors,
     testTag: String,
     onClick: () -> Unit
 ) {
@@ -325,7 +309,7 @@ private fun UtilityIconButton(
 
 @Composable
 fun VoiceSoftMicBanner(
-    theme: HybridThemeStyle,
+    theme: ResolvedKeyboardColors,
     voiceState: VoiceDictationState,
     rmsLevel: Float,
     language: KeyboardLanguage,
@@ -425,7 +409,7 @@ fun VoiceSoftMicBanner(
 
 @Composable
 fun EmojiKeyboardPanel(
-    theme: HybridThemeStyle,
+    theme: ResolvedKeyboardColors,
     onEmojiClick: (String) -> Unit,
     onBackspace: () -> Unit,
     onBackToAlpha: () -> Unit
@@ -449,7 +433,6 @@ fun EmojiKeyboardPanel(
             .height(250.dp)
             .background(theme.backgroundColor)
     ) {
-        // Emoji Search & Mode Strip (Emoji vs Kaomoji)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -551,7 +534,6 @@ fun EmojiKeyboardPanel(
                 }
             }
         } else {
-            // Recently Used strip
             if (searchQuery.isEmpty()) {
                 Row(
                     modifier = Modifier
@@ -666,9 +648,9 @@ fun EmojiKeyboardPanel(
 
 @Composable
 fun ClipboardKeyboardPanel(
-    theme: HybridThemeStyle,
+    theme: ResolvedKeyboardColors,
     entries: List<ClipboardEntryEntity>,
-    onPasteTextEntry: (String) -> Unit,
+    onPasteTextEntry: (ClipboardEntryEntity) -> Unit,
     onPasteImageEntry: (ClipboardEntryEntity) -> Unit,
     onSyncSystemClipboard: () -> Unit,
     onTogglePin: (ClipboardEntryEntity) -> Unit,
@@ -689,7 +671,7 @@ fun ClipboardKeyboardPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Clipboard • Text & Screenshots",
+                text = "Clipboard • Code, Text & Screenshots",
                 color = theme.hintTextColor,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
@@ -743,9 +725,9 @@ fun ClipboardKeyboardPanel(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Copy text or take a screenshot — it appears here!",
+                    text = "Copy text, 50K-line code, or screenshots — they appear here",
                     color = theme.hintTextColor,
-                    fontSize = 13.sp
+                    fontSize = 12.sp
                 )
             }
         } else {
@@ -767,11 +749,11 @@ fun ClipboardKeyboardPanel(
                             .background(theme.keyColor)
                             .border(
                                 width = 1.dp,
-                                color = if (item.isImage) theme.accentColor.copy(alpha = 0.55f) else theme.keyBorderColor,
+                                color = if (item.isImage || item.isLargeText) theme.accentColor.copy(alpha = 0.55f) else theme.keyBorderColor,
                                 shape = RoundedCornerShape(10.dp)
                             )
                             .clickable {
-                                if (item.isImage) onPasteImageEntry(item) else onPasteTextEntry(item.content)
+                                if (item.isImage) onPasteImageEntry(item) else onPasteTextEntry(item)
                             }
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -813,6 +795,39 @@ fun ClipboardKeyboardPanel(
                                     color = theme.keyTextColor,
                                     fontSize = 12.sp,
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        } else if (item.isLargeText) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(theme.accentColor.copy(alpha = 0.16f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Code,
+                                    contentDescription = "Large Code Block",
+                                    tint = theme.accentColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${item.lineCount} LINES • ${ClipboardSyncManager.formatCharSize(item.charCount)} • TAP TO PASTE",
+                                    color = theme.accentColor,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = item.content,
+                                    color = theme.keyTextColor,
+                                    fontSize = 12.sp,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }

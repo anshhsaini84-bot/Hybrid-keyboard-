@@ -5,8 +5,8 @@ import com.example.data.KeyboardLanguage
 import kotlin.math.abs
 
 /**
- * Lightweight, low-battery dictionary, autocorrect, Hinglish transliteration,
- * next-word predictor, and geometric swipe/glide word decoder.
+ * Lightweight, low-battery multi-language dictionary, autocorrect, Hinglish transliteration,
+ * next-word predictor, and geometric swipe/glide word decoder across all 11 languages.
  */
 object DictionaryEngine {
 
@@ -27,7 +27,7 @@ object DictionaryEngine {
         "typing", "swipe", "glide", "battery", "smooth", "smart", "fast", "clean", "dark",
         "theme", "clipboard", "emoji", "message", "morning", "evening", "night", "today",
         "tomorrow", "meeting", "call", "phone", "mobile", "screen", "update", "ready",
-        "working", "perfectly", "everything", "awesome", "download", "feature", "settings",
+        "working", "perfectly", "everything", "download", "feature", "settings",
         "language", "english", "hindi", "hinglish", "friend", "family", "home", "office",
         "love", "happy", "smile", "check", "send", "share", "copy", "paste", "delete",
         "system", "performance", "power", "saver", "mode", "quick", "easy", "better", "best"
@@ -40,6 +40,44 @@ object DictionaryEngine {
         "apna", "ghar", "kaam", "samay", "abhi", "kal", "aaj", "subah", "shaam", "raat",
         "khana", "pani", "chai", "coffee", "milte", "baad", "jaldi", "dhanyawad", "shukriya",
         "haan", "nahi", "bilkul", "zaroor", "samajh", "bolna", "likhna", "sunna", "dekho"
+    )
+
+    private val spanishVocabulary = listOf(
+        "hola", "buenos", "dias", "gracias", "por", "favor", "amigo", "como", "estas",
+        "bien", "si", "no", "bueno", "noche", "tarde", "trabajo", "casa", "hoy", "mañana",
+        "teclado", "mensaje", "excelente", "perfecto", "vale", "claro", "genial"
+    )
+
+    private val frenchVocabulary = listOf(
+        "bonjour", "salut", "merci", "beaucoup", "oui", "non", "bien", "super", "parfait",
+        "ami", "comment", "allez", "vous", "soir", "matin", "maison", "travail", "clavier",
+        "message", "demain", "aujourd", "pardon", "excusez", "genial"
+    )
+
+    private val germanVocabulary = listOf(
+        "hallo", "guten", "morgen", "abend", "danke", "bitte", "ja", "nein", "gut", "super",
+        "freund", "wie", "geht", "heute", "haus", "arbeit", "tastatur", "nachricht", "perfekt",
+        "alles", "klar", "gerne", "tschuss"
+    )
+
+    private val arabicVocabulary = listOf(
+        "مرحبا", "شكرا", "أهلا", "كيف", "حالك", "بخير", "نعم", "لا", "صباح", "مساء", "ممتاز"
+    )
+
+    private val russianVocabulary = listOf(
+        "привет", "спасибо", "хорошо", "да", "нет", "пожалуйста", "друг", "утро", "вечер", "отлично"
+    )
+
+    private val bengaliVocabulary = listOf(
+        "নমস্কার", "ধন্যবাদ", "ভালো", "কেমন", "আছেন", "হ্যাঁ", "না", "বন্ধু", "শুভ", "সকাল"
+    )
+
+    private val marathiVocabulary = listOf(
+        "नमस्कार", "धन्यवाद", "कसे", "आहात", "छान", "हो", "नाही", "मित्र", "शुभ", "सकाळ"
+    )
+
+    private val tamilVocabulary = listOf(
+        "வணக்கம்", "நன்றி", "நல்லா", "எப்படி", "இருக்கீங்க", "ஆம்", "இல்லை", "நண்பா", "காலை"
     )
 
     private val hinglishTransliterations = mapOf(
@@ -89,12 +127,39 @@ object DictionaryEngine {
         "kya" to listOf("haal", "kar", "hai"),
         "kaise" to listOf("ho", "hain", "hai"),
         "theek" to listOf("hai", "hoon", "tha"),
-        "bahut" to listOf("badhiya", "accha", "badiya")
+        "bahut" to listOf("badhiya", "accha", "badiya"),
+        "buenos" to listOf("días", "amigos", "deseos"),
+        "guten" to listOf("Morgen", "Tag", "Abend"),
+        "merci" to listOf("beaucoup", "bien", "infiniment")
     )
 
-    private val defaultEmptySuggestions = listOf("Hello", "Hybrid", "Thanks")
-    private val defaultHinglishEmpty = listOf("Namaste", "Kya", "Badhiya")
-    private val defaultHindiEmpty = listOf("नमस्ते", "क्या", "बढ़िया")
+    private fun defaultSuggestionsFor(language: KeyboardLanguage): List<String> = when (language) {
+        KeyboardLanguage.ENGLISH_US -> listOf("Hello", "Hybrid", "Thanks")
+        KeyboardLanguage.HINGLISH -> listOf("Namaste", "Kya", "Badhiya")
+        KeyboardLanguage.HINDI_DEVANAGARI -> listOf("नमस्ते", "क्या", "बढ़िया")
+        KeyboardLanguage.SPANISH -> listOf("Hola", "Gracias", "Genial")
+        KeyboardLanguage.FRENCH -> listOf("Bonjour", "Merci", "Super")
+        KeyboardLanguage.GERMAN -> listOf("Hallo", "Danke", "Super")
+        KeyboardLanguage.ARABIC -> listOf("مرحبا", "شكرا", "ممتاز")
+        KeyboardLanguage.RUSSIAN -> listOf("Привет", "Спасибо", "Хорошо")
+        KeyboardLanguage.BENGALI -> listOf("নমস্কার", "ধন্যবাদ", "ভালো")
+        KeyboardLanguage.MARATHI -> listOf("नमस्कार", "धन्यवाद", "छान")
+        KeyboardLanguage.TAMIL -> listOf("வணக்கம்", "நன்றி", "நல்லா")
+    }
+
+    private fun vocabularyFor(language: KeyboardLanguage): List<String> = when (language) {
+        KeyboardLanguage.ENGLISH_US -> englishVocabulary
+        KeyboardLanguage.HINGLISH -> hinglishVocabulary + englishVocabulary
+        KeyboardLanguage.HINDI_DEVANAGARI -> listOf("नमस्ते", "क्या", "बढ़िया", "कैसे", "अच्छा", "धन्यवाद", "बहुत", "ठीक", "भारत")
+        KeyboardLanguage.SPANISH -> spanishVocabulary + englishVocabulary
+        KeyboardLanguage.FRENCH -> frenchVocabulary + englishVocabulary
+        KeyboardLanguage.GERMAN -> germanVocabulary + englishVocabulary
+        KeyboardLanguage.ARABIC -> arabicVocabulary
+        KeyboardLanguage.RUSSIAN -> russianVocabulary
+        KeyboardLanguage.BENGALI -> bengaliVocabulary
+        KeyboardLanguage.MARATHI -> marathiVocabulary
+        KeyboardLanguage.TAMIL -> tamilVocabulary
+    }
 
     fun suggest(
         currentWord: String,
@@ -108,11 +173,7 @@ object DictionaryEngine {
             val prev = previousWord.trim().lowercase()
             val next = nextWordMap[prev]
             if (next != null) return next
-            return when (language) {
-                KeyboardLanguage.ENGLISH_US -> defaultEmptySuggestions
-                KeyboardLanguage.HINGLISH -> defaultHinglishEmpty
-                KeyboardLanguage.HINDI_DEVANAGARI -> defaultHindiEmpty
-            }
+            return defaultSuggestionsFor(language)
         }
 
         val lower = clean.lowercase()
@@ -129,12 +190,7 @@ object DictionaryEngine {
         }
 
         // 3. Prefix matches
-        val pool = when (language) {
-            KeyboardLanguage.ENGLISH_US -> englishVocabulary
-            KeyboardLanguage.HINGLISH -> hinglishVocabulary + englishVocabulary
-            KeyboardLanguage.HINDI_DEVANAGARI -> defaultHindiEmpty + listOf("कैसे", "अच्छा", "धन्यवाद", "बहुत", "ठीक", "भारत")
-        }
-
+        val pool = vocabularyFor(language)
         val wasCapitalized = clean.firstOrNull()?.isUpperCase() == true
         for (word in pool) {
             if (word.startsWith(lower) && word != lower) {
@@ -163,7 +219,7 @@ object DictionaryEngine {
 
     /**
      * Decodes a sequence of glided key letters (e.g. "h-e-l-l-o" or noisy "h-r-e-l-o")
-     * into the closest English/Hinglish word, matching Gboard glide typing behavior.
+     * into the closest word for Latin-script languages.
      */
     fun decodeGlideSequence(
         visitedKeys: List<String>,
@@ -180,11 +236,7 @@ object DictionaryEngine {
 
         val firstChar = collapsed.first()
         val lastChar = collapsed.last()
-        val candidates = if (language == KeyboardLanguage.HINGLISH) {
-            hinglishVocabulary + englishVocabulary
-        } else {
-            englishVocabulary
-        }
+        val candidates = vocabularyFor(language)
 
         var bestWord: String? = null
         var bestScore = Int.MIN_VALUE
@@ -199,7 +251,6 @@ object DictionaryEngine {
                 score += 65 - abs(collapsed.length - wordCollapsed.length) * 5
                 if (wordCollapsed == collapsed) score += 30
             } else {
-                // Count ordered character hits
                 var wi = 0
                 for (ch in collapsed) {
                     if (wi < wordCollapsed.length && wordCollapsed[wi] == ch) {

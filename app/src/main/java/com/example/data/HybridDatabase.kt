@@ -17,6 +17,9 @@ import java.io.File
 data class ClipboardEntryEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val content: String,
+    val textFilePath: String? = null,
+    val lineCount: Int = 1,
+    val charCount: Int = 0,
     val imagePath: String? = null,
     val mimeType: String? = null,
     val isScreenshot: Boolean = false,
@@ -25,6 +28,9 @@ data class ClipboardEntryEntity(
 ) {
     val isImage: Boolean
         get() = !imagePath.isNullOrBlank()
+
+    val isLargeText: Boolean
+        get() = !textFilePath.isNullOrBlank()
 }
 
 @Entity(tableName = "custom_words")
@@ -37,10 +43,10 @@ data class CustomWordEntity(
 
 @Dao
 interface ClipboardDao {
-    @Query("SELECT * FROM clipboard_entries ORDER BY isPinned DESC, timestamp DESC LIMIT 50")
+    @Query("SELECT * FROM clipboard_entries ORDER BY isPinned DESC, timestamp DESC LIMIT 60")
     fun observeAll(): Flow<List<ClipboardEntryEntity>>
 
-    @Query("SELECT * FROM clipboard_entries WHERE content = :content AND imagePath IS NULL LIMIT 1")
+    @Query("SELECT * FROM clipboard_entries WHERE content = :content AND imagePath IS NULL AND textFilePath IS NULL LIMIT 1")
     suspend fun findByText(content: String): ClipboardEntryEntity?
 
     @Query("SELECT * FROM clipboard_entries WHERE id = :id LIMIT 1")
@@ -85,7 +91,7 @@ interface CustomWordDao {
 
 @Database(
     entities = [ClipboardEntryEntity::class, CustomWordEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class HybridDatabase : RoomDatabase() {
@@ -119,14 +125,10 @@ class HybridDataRepository(private val db: HybridDatabase) {
         if (db.clipboardDao().count() == 0) {
             db.clipboardDao().insert(
                 ClipboardEntryEntity(
-                    content = "Hybrid Keyboard: Samsung layout + Gboard glide + Screenshot Clipboard",
+                    content = "Hybrid Keyboard: Supports 50,000+ line code copy/paste & screenshots",
+                    lineCount = 1,
+                    charCount = 69,
                     isPinned = true
-                )
-            )
-            db.clipboardDao().insert(
-                ClipboardEntryEntity(
-                    content = "Namaste! Copied text & screenshots appear here automatically.",
-                    isPinned = false
                 )
             )
         }
@@ -149,8 +151,35 @@ class HybridDataRepository(private val db: HybridDatabase) {
         if (existing != null) {
             db.clipboardDao().touchTimestamp(existing.id, System.currentTimeMillis())
         } else {
-            db.clipboardDao().insert(ClipboardEntryEntity(content = trimmed, isPinned = pinned))
+            val lines = trimmed.count { it == '\n' } + 1
+            db.clipboardDao().insert(
+                ClipboardEntryEntity(
+                    content = trimmed,
+                    lineCount = lines,
+                    charCount = trimmed.length,
+                    isPinned = pinned
+                )
+            )
         }
+    }
+
+    suspend fun addLargeClipboardText(
+        preview: String,
+        textFilePath: String,
+        lineCount: Int,
+        charCount: Int,
+        pinned: Boolean = false
+    ) {
+        db.clipboardDao().insert(
+            ClipboardEntryEntity(
+                content = preview,
+                textFilePath = textFilePath,
+                lineCount = lineCount,
+                charCount = charCount,
+                isPinned = pinned,
+                timestamp = System.currentTimeMillis()
+            )
+        )
     }
 
     suspend fun addClipboardImage(
@@ -178,18 +207,16 @@ class HybridDataRepository(private val db: HybridDatabase) {
 
     suspend fun deleteClipboardEntry(id: Int) {
         val entry = db.clipboardDao().findById(id)
-        entry?.imagePath?.let { path ->
-            runCatching { File(path).delete() }
-        }
+        entry?.imagePath?.let { path -> runCatching { File(path).delete() } }
+        entry?.textFilePath?.let { path -> runCatching { File(path).delete() } }
         db.clipboardDao().deleteById(id)
     }
 
     suspend fun clearUnpinnedClipboard() {
         val unpinned = db.clipboardDao().getUnpinned()
         unpinned.forEach { entry ->
-            entry.imagePath?.let { path ->
-                runCatching { File(path).delete() }
-            }
+            entry.imagePath?.let { path -> runCatching { File(path).delete() } }
+            entry.textFilePath?.let { path -> runCatching { File(path).delete() } }
         }
         db.clipboardDao().clearUnpinned()
     }
